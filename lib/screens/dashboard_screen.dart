@@ -145,7 +145,11 @@ class DashboardScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 28),
-          const SectionHeader(title: 'Milestones & deadlines', actionLabel: 'View all'),
+          SectionHeader(
+            title: 'Milestones & deadlines',
+            actionLabel: 'View all',
+            onActionPressed: () => _showSnackBar(context, 'Viewing all milestones'),
+          ),
           const SizedBox(height: 12),
           ...milestones.map(
             (milestone) => Card(
@@ -194,7 +198,11 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const SectionHeader(title: 'Payments', actionLabel: 'Export'),
+          SectionHeader(
+            title: 'Payments',
+            actionLabel: 'Export',
+            onActionPressed: () => _showSnackBar(context, 'Exporting payments'),
+          ),
           const SizedBox(height: 12),
           Card(
             child: Column(
@@ -241,7 +249,11 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const SectionHeader(title: 'Clients', actionLabel: 'Add'),
+          SectionHeader(
+            title: 'Clients',
+            actionLabel: 'Add',
+            onActionPressed: () => _showSnackBar(context, 'Adding a new client'),
+          ),
           const SizedBox(height: 12),
           ...clients.map(
             (client) => Card(
@@ -281,10 +293,16 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        onPressed: () => _showSnackBar(context, 'Creating a new project'),
         icon: const Icon(Icons.add),
         label: const Text('New project'),
       ),
+    );
+  }
+
+  void _showSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
