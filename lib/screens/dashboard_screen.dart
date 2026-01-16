@@ -16,13 +16,15 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedClientStatus;
-  String? _selectedWorkType;
+  String? _selectedContractType;
   late final Future<PackageInfo> _packageInfoFuture;
   final GlobalKey<FormState> _clientFormKey = GlobalKey<FormState>();
   final TextEditingController _clientNameController = TextEditingController();
-  final TextEditingController _clientTimelineController = TextEditingController();
+  final TextEditingController _plannedBudgetController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
-  final TextEditingController _contactMethodController = TextEditingController();
+  final TextEditingController _contactPhoneController = TextEditingController();
+  final TextEditingController _contactEmailController = TextEditingController();
+  final TextEditingController _contactTelegramController = TextEditingController();
 
   final List<Client> _clients = [
         Client(
@@ -57,9 +59,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _clientNameController.dispose();
-    _clientTimelineController.dispose();
+    _plannedBudgetController.dispose();
     _contactNameController.dispose();
-    _contactMethodController.dispose();
+    _contactPhoneController.dispose();
+    _contactEmailController.dispose();
+    _contactTelegramController.dispose();
     super.dispose();
   }
 
@@ -377,10 +381,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showClientForm() {
     _clientNameController.clear();
-    _clientTimelineController.clear();
+    _plannedBudgetController.clear();
     _contactNameController.clear();
-    _contactMethodController.clear();
-    _selectedWorkType = null;
+    _contactPhoneController.clear();
+    _contactEmailController.clear();
+    _contactTelegramController.clear();
+    _selectedContractType = null;
 
     showDialog<void>(
       context: context,
@@ -408,60 +414,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         },
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedWorkType,
-                        decoration: const InputDecoration(
-                          labelText: 'Work type (optional)',
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Contract type',
+                          style: Theme.of(context).textTheme.labelLarge,
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Project',
-                            child: Text('Project'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Retainer',
-                            child: Text('Retainer'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          setDialogState(() {
-                            _selectedWorkType = value;
-                          });
-                        },
                       ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: ['Project', 'Retainer'].map((type) {
+                          return ChoiceChip(
+                            label: Text(type),
+                            selected: _selectedContractType == type,
+                            onSelected: (_) {
+                              setDialogState(() {
+                                _selectedContractType = type;
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      if (_selectedContractType == null) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Select a contract type',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       TextFormField(
-                        controller: _clientTimelineController,
+                        controller: _plannedBudgetController,
                         decoration: const InputDecoration(
-                          labelText: 'Planned collaboration (optional)',
+                          labelText: 'Planned budget (€)',
                         ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a planned budget';
+                          }
+                          final parsed = double.tryParse(value.replaceAll(',', '.'));
+                          if (parsed == null || parsed <= 0) {
+                            return 'Enter a valid budget';
+                          }
+                          return null;
+                        },
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: _contactNameController,
                         decoration: const InputDecoration(
-                          labelText: 'Contact name',
+                          labelText: 'Contact name (optional)',
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a contact name';
-                          }
-                          return null;
-                        },
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
-                        controller: _contactMethodController,
+                        controller: _contactPhoneController,
                         decoration: const InputDecoration(
-                          labelText: 'Contact method',
-                          hintText: 'Email, phone, or messenger',
+                          labelText: 'Phone (optional)',
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a contact method';
-                          }
-                          return null;
-                        },
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactEmailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email (optional)',
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactTelegramController,
+                        decoration: const InputDecoration(
+                          labelText: 'Telegram (optional)',
+                          hintText: '@username',
+                        ),
                       ),
                     ],
                   ),
@@ -475,6 +511,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 FilledButton(
                   onPressed: () {
                     final isValid = _clientFormKey.currentState?.validate() ?? false;
+                    if (_selectedContractType == null) {
+                      setDialogState(() {});
+                      return;
+                    }
                     if (!isValid) {
                       return;
                     }
@@ -492,16 +532,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _addClient() {
-    final workType = _clientWorkTypeLabel(_selectedWorkType);
-    final timeline = _clientTimelineController.text.trim();
+    final contractType = _selectedContractType ?? 'Project';
     final contactName = _contactNameController.text.trim();
-    final contactMethod = _contactMethodController.text.trim();
+    final contactPhone = _contactPhoneController.text.trim();
+    final contactEmail = _contactEmailController.text.trim();
+    final contactTelegram = _contactTelegramController.text.trim();
     final projectSummary = _buildProjectSummary(
-      workType: workType,
-      timeline: timeline,
+      contractType: contractType,
       contactName: contactName,
-      contactMethod: contactMethod,
+      contactPhone: contactPhone,
+      contactEmail: contactEmail,
+      contactTelegram: contactTelegram,
     );
+    final plannedBudget =
+        double.tryParse(_plannedBudgetController.text.trim().replaceAll(',', '.')) ?? 0;
 
     setState(() {
       _clients.add(
@@ -509,7 +553,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           name: _clientNameController.text.trim(),
           project: projectSummary,
           status: 'New',
-          budget: 0,
+          budget: plannedBudget,
           deadline: DateTime.now().add(const Duration(days: 90)),
         ),
       );
@@ -518,17 +562,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _buildProjectSummary({
-    required String workType,
-    required String timeline,
+    required String contractType,
     required String contactName,
-    required String contactMethod,
+    required String contactPhone,
+    required String contactEmail,
+    required String contactTelegram,
   }) {
-    final timelineLabel = timeline.isEmpty ? 'Timeline TBD' : timeline;
-    return '$workType • $timelineLabel • $contactName ($contactMethod)';
+    final contactLine = _buildContactLine(
+      contactName: contactName,
+      contactPhone: contactPhone,
+      contactEmail: contactEmail,
+      contactTelegram: contactTelegram,
+    );
+    return '$contractType • $contactLine';
   }
 
-  String _clientWorkTypeLabel(String? workType) {
-    return workType == null || workType.isEmpty ? 'General' : workType;
+  String _buildContactLine({
+    required String contactName,
+    required String contactPhone,
+    required String contactEmail,
+    required String contactTelegram,
+  }) {
+    final details = [
+      if (contactPhone.isNotEmpty) 'Phone: $contactPhone',
+      if (contactEmail.isNotEmpty) 'Email: $contactEmail',
+      if (contactTelegram.isNotEmpty) 'Telegram: $contactTelegram',
+    ];
+    if (contactName.isEmpty && details.isEmpty) {
+      return 'Contact TBD';
+    }
+    if (contactName.isEmpty) {
+      return details.join(', ');
+    }
+    if (details.isEmpty) {
+      return contactName;
+    }
+    return '$contactName (${details.join(', ')})';
   }
 
   void _showCreateMenu() {
