@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/client.dart';
 import '../models/milestone.dart';
@@ -15,8 +16,9 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedClientStatus;
+  late final Future<PackageInfo> _packageInfoFuture;
 
-  List<Client> get clients => [
+  final List<Client> _clients = [
         Client(
           name: 'Studio Puncto',
           project: 'Brand identity refresh',
@@ -39,6 +41,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           deadline: DateTime(2024, 11, 22),
         ),
       ];
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+  }
 
   List<Milestone> get milestones => [
         Milestone(
@@ -79,17 +87,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final referenceDate = DateTime(2024, 10, 1);
-    final activeProjects = clients.length;
-    final totalBudget = clients.fold<double>(0, (sum, client) => sum + client.budget);
+    final activeProjects = _clients.length;
+    final totalBudget = _clients.fold<double>(0, (sum, client) => sum + client.budget);
     final deadlinesThisWeek =
         milestones.where((milestone) => _isWithinDays(referenceDate, milestone.dueDate, 7)).length;
     final upcomingPayments = payments
         .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
         .fold<double>(0, (sum, payment) => sum + payment.amount);
-    final clientStatuses = clients.map((client) => client.status).toSet().toList()..sort();
+    final clientStatuses = _clients.map((client) => client.status).toSet().toList()..sort();
     final visibleClients = _selectedClientStatus == null
-        ? clients
-        : clients.where((client) => client.status == _selectedClientStatus).toList();
+        ? _clients
+        : _clients.where((client) => client.status == _selectedClientStatus).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -97,17 +105,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Good morning, Anna',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              'Hi Basil',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
             ),
             const SizedBox(height: 4),
-            Text(
-              'Focus on the key milestones across projects',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+            FutureBuilder<PackageInfo>(
+              future: _packageInfoFuture,
+              builder: (context, snapshot) {
+                final version = snapshot.data?.version;
+                final subtitle = version == null ? 'Jahrrr' : 'Jahrrr v$version';
+                return Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                );
+              },
             ),
           ],
         ),
@@ -137,7 +152,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               StatCard(
                 title: 'Active projects',
                 value: activeProjects.toString(),
-                subtitle: 'Across ${clients.length} clients',
+                subtitle: 'Across ${_clients.length} clients',
                 icon: Icons.auto_graph,
                 color: Color(0xFF4F46E5),
                 onTap: () => _showSnackBar(context, 'Opening active projects'),
@@ -145,7 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               StatCard(
                 title: 'Budget in progress',
                 value: _formatCurrency(totalBudget),
-                subtitle: 'Across ${clients.length} projects',
+                subtitle: 'Across ${_clients.length} projects',
                 icon: Icons.account_balance_wallet_outlined,
                 color: Color(0xFF10B981),
                 onTap: () => _showSnackBar(context, 'Reviewing budget in progress'),
@@ -276,7 +291,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SectionHeader(
             title: 'Clients',
             actionLabel: 'Add',
-            onActionPressed: () => _showSnackBar(context, 'Adding a new client'),
+            onActionPressed: _addClient,
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -347,6 +362,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  void _addClient() {
+    setState(() {
+      _clients.add(
+        Client(
+          name: 'Atlas Studio',
+          project: 'Product launch campaign',
+          status: 'In production',
+          budget: 2600,
+          deadline: DateTime(2024, 12, 3),
+        ),
+      );
+    });
+    _showSnackBar(context, 'Added Atlas Studio');
   }
 
   void _updateClientStatusFilter(String? status) {
