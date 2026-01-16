@@ -147,13 +147,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisSpacing: 16,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.25,
+            childAspectRatio: 0.95,
             children: [
               StatCard(
                 title: 'Active projects',
                 value: activeProjects.toString(),
                 subtitle: 'Across ${_clients.length} clients',
-                icon: Icons.auto_graph,
                 color: Color(0xFF4F46E5),
                 onTap: () => _showSnackBar(context, 'Opening active projects'),
               ),
@@ -161,7 +160,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: 'Budget in progress',
                 value: _formatCurrency(totalBudget),
                 subtitle: 'Across ${_clients.length} projects',
-                icon: Icons.account_balance_wallet_outlined,
                 color: Color(0xFF10B981),
                 onTap: () => _showSnackBar(context, 'Reviewing budget in progress'),
               ),
@@ -169,7 +167,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: 'Deadlines this week',
                 value: deadlinesThisWeek.toString(),
                 subtitle: 'Next 7 days',
-                icon: Icons.timer_outlined,
                 color: Color(0xFFF59E0B),
                 onTap: () => _showSnackBar(context, 'Checking weekly deadlines'),
               ),
@@ -177,7 +174,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: 'Upcoming payments',
                 value: _formatCurrency(upcomingPayments),
                 subtitle: 'Next 7 days',
-                icon: Icons.payments_outlined,
                 color: Color(0xFFEC4899),
                 onTap: () => _showSnackBar(context, 'Reviewing upcoming payments'),
               ),
@@ -351,9 +347,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showSnackBar(context, 'Creating a new project'),
+        onPressed: _showCreateMenu,
         icon: const Icon(Icons.add),
-        label: const Text('New project'),
+        label: const Text('New'),
       ),
     );
   }
@@ -377,6 +373,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     });
     _showSnackBar(context, 'Added Atlas Studio');
+  }
+
+  void _showCreateMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (bottomSheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person_add_outlined),
+                title: const Text('New client'),
+                onTap: () {
+                  Navigator.of(bottomSheetContext).pop();
+                  _addClient();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.work_outline),
+                title: const Text('New project'),
+                onTap: () {
+                  Navigator.of(bottomSheetContext).pop();
+                  if (_clients.isEmpty) {
+                    _showSnackBar(context, 'Create a client first');
+                    return;
+                  }
+                  _showSnackBar(context, 'Select a client to create a project');
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _updateClientStatusFilter(String? status) {
