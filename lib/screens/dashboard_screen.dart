@@ -16,7 +16,13 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedClientStatus;
+  String? _selectedWorkType;
   late final Future<PackageInfo> _packageInfoFuture;
+  final GlobalKey<FormState> _clientFormKey = GlobalKey<FormState>();
+  final TextEditingController _clientNameController = TextEditingController();
+  final TextEditingController _clientTimelineController = TextEditingController();
+  final TextEditingController _contactNameController = TextEditingController();
+  final TextEditingController _contactMethodController = TextEditingController();
 
   final List<Client> _clients = [
         Client(
@@ -46,6 +52,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _packageInfoFuture = PackageInfo.fromPlatform();
+  }
+
+  @override
+  void dispose() {
+    _clientNameController.dispose();
+    _clientTimelineController.dispose();
+    _contactNameController.dispose();
+    _contactMethodController.dispose();
+    super.dispose();
   }
 
   List<Milestone> get milestones => [
@@ -287,7 +302,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SectionHeader(
             title: 'Clients',
             actionLabel: 'Add',
-            onActionPressed: _addClient,
+            onActionPressed: _showClientForm,
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -360,19 +375,160 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showClientForm() {
+    _clientNameController.clear();
+    _clientTimelineController.clear();
+    _contactNameController.clear();
+    _contactMethodController.clear();
+    _selectedWorkType = null;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('New client'),
+              content: Form(
+                key: _clientFormKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: _clientNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Client name',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a client name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _selectedWorkType,
+                        decoration: const InputDecoration(
+                          labelText: 'Work type (optional)',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Project',
+                            child: Text('Project'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Retainer',
+                            child: Text('Retainer'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setDialogState(() {
+                            _selectedWorkType = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _clientTimelineController,
+                        decoration: const InputDecoration(
+                          labelText: 'Planned collaboration (optional)',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Contact name',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a contact name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactMethodController,
+                        decoration: const InputDecoration(
+                          labelText: 'Contact method',
+                          hintText: 'Email, phone, or messenger',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a contact method';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final isValid = _clientFormKey.currentState?.validate() ?? false;
+                    if (!isValid) {
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop();
+                    _addClient();
+                  },
+                  child: const Text('Add client'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _addClient() {
+    final workType = _clientWorkTypeLabel(_selectedWorkType);
+    final timeline = _clientTimelineController.text.trim();
+    final contactName = _contactNameController.text.trim();
+    final contactMethod = _contactMethodController.text.trim();
+    final projectSummary = _buildProjectSummary(
+      workType: workType,
+      timeline: timeline,
+      contactName: contactName,
+      contactMethod: contactMethod,
+    );
+
     setState(() {
       _clients.add(
         Client(
-          name: 'Atlas Studio',
-          project: 'Product launch campaign',
-          status: 'In production',
-          budget: 2600,
-          deadline: DateTime(2024, 12, 3),
+          name: _clientNameController.text.trim(),
+          project: projectSummary,
+          status: 'New',
+          budget: 0,
+          deadline: DateTime.now().add(const Duration(days: 90)),
         ),
       );
     });
-    _showSnackBar(context, 'Added Atlas Studio');
+    _showSnackBar(context, 'Client added');
+  }
+
+  String _buildProjectSummary({
+    required String workType,
+    required String timeline,
+    required String contactName,
+    required String contactMethod,
+  }) {
+    final timelineLabel = timeline.isEmpty ? 'Timeline TBD' : timeline;
+    return '$workType • $timelineLabel • $contactName ($contactMethod)';
+  }
+
+  String _clientWorkTypeLabel(String? workType) {
+    return workType == null || workType.isEmpty ? 'General' : workType;
   }
 
   void _showCreateMenu() {
@@ -389,7 +545,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: const Text('New client'),
                 onTap: () {
                   Navigator.of(bottomSheetContext).pop();
-                  _addClient();
+                  _showClientForm();
                 },
               ),
               ListTile(
