@@ -13,21 +13,21 @@ class DashboardScreen extends StatelessWidget {
         Client(
           name: 'Studio Puncto',
           project: 'Brand identity refresh',
-          status: 'В производстве',
+          status: 'In production',
           budget: 4800,
           deadline: DateTime(2024, 11, 14),
         ),
         Client(
           name: 'Lunar Cafe',
-          project: 'Меню и упаковка',
-          status: 'Концепт',
+          project: 'Menu and packaging',
+          status: 'Concept',
           budget: 2100,
           deadline: DateTime(2024, 10, 30),
         ),
         Client(
           name: 'Nova Interiors',
-          project: 'Digital презентация',
-          status: 'Финализация',
+          project: 'Digital presentation',
+          status: 'Finalization',
           budget: 3200,
           deadline: DateTime(2024, 11, 22),
         ),
@@ -35,13 +35,13 @@ class DashboardScreen extends StatelessWidget {
 
   List<Milestone> get milestones => [
         Milestone(
-          title: 'Утверждение moodboard',
+          title: 'Moodboard approval',
           client: 'Studio Puncto',
           dueDate: DateTime(2024, 10, 18),
           progress: 0.72,
         ),
         Milestone(
-          title: 'Прототип лендинга',
+          title: 'Landing page prototype',
           client: 'Nova Interiors',
           dueDate: DateTime(2024, 10, 24),
           progress: 0.48,
@@ -53,38 +53,47 @@ class DashboardScreen extends StatelessWidget {
           client: 'Lunar Cafe',
           amount: 900,
           date: DateTime(2024, 10, 12),
-          stage: 'Аванс',
+          stage: 'Deposit',
         ),
         Payment(
           client: 'Studio Puncto',
           amount: 1400,
           date: DateTime(2024, 10, 8),
-          stage: 'Спринт 1',
+          stage: 'Sprint 1',
         ),
         Payment(
           client: 'Nova Interiors',
           amount: 700,
           date: DateTime(2024, 10, 5),
-          stage: 'Исследование',
+          stage: 'Research',
         ),
       ];
 
   @override
   Widget build(BuildContext context) {
+    final referenceDate = DateTime(2024, 10, 1);
+    final activeProjects = clients.length;
+    final totalBudget = clients.fold<double>(0, (sum, client) => sum + client.budget);
+    final deadlinesThisWeek =
+        milestones.where((milestone) => _isWithinDays(referenceDate, milestone.dueDate, 7)).length;
+    final upcomingPayments = payments
+        .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
+        .fold<double>(0, (sum, payment) => sum + payment.amount);
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Доброе утро, Аня',
+              'Good morning, Anna',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
             ),
             const SizedBox(height: 4),
             Text(
-              'Держим фокус на ключевых этапах проектов',
+              'Focus on the key milestones across projects',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -113,39 +122,47 @@ class DashboardScreen extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             childAspectRatio: 1.25,
-            children: const [
+            children: [
               StatCard(
-                title: 'Активные проекты',
-                value: '6',
-                subtitle: '+2 за месяц',
+                title: 'Active projects',
+                value: activeProjects.toString(),
+                subtitle: 'Across ${clients.length} clients',
                 icon: Icons.auto_graph,
                 color: Color(0xFF4F46E5),
+                onTap: () => _showSnackBar(context, 'Opening active projects'),
               ),
               StatCard(
-                title: 'Бюджет в работе',
-                value: '€18 400',
-                subtitle: '75% собрано',
+                title: 'Budget in progress',
+                value: _formatCurrency(totalBudget),
+                subtitle: 'Across ${clients.length} projects',
                 icon: Icons.account_balance_wallet_outlined,
                 color: Color(0xFF10B981),
+                onTap: () => _showSnackBar(context, 'Reviewing budget in progress'),
               ),
               StatCard(
-                title: 'Дедлайны недели',
-                value: '3',
-                subtitle: '2 в риске',
+                title: 'Deadlines this week',
+                value: deadlinesThisWeek.toString(),
+                subtitle: 'Next 7 days',
                 icon: Icons.timer_outlined,
                 color: Color(0xFFF59E0B),
+                onTap: () => _showSnackBar(context, 'Checking weekly deadlines'),
               ),
               StatCard(
-                title: 'Платежи ожидаются',
-                value: '€4 200',
-                subtitle: 'След. 5 дней',
+                title: 'Upcoming payments',
+                value: _formatCurrency(upcomingPayments),
+                subtitle: 'Next 7 days',
                 icon: Icons.payments_outlined,
                 color: Color(0xFFEC4899),
+                onTap: () => _showSnackBar(context, 'Reviewing upcoming payments'),
               ),
             ],
           ),
           const SizedBox(height: 28),
-          const SectionHeader(title: 'Этапы и дедлайны', actionLabel: 'Смотреть все'),
+          SectionHeader(
+            title: 'Milestones & deadlines',
+            actionLabel: 'View all',
+            onActionPressed: () => _showSnackBar(context, 'Viewing all milestones'),
+          ),
           const SizedBox(height: 12),
           ...milestones.map(
             (milestone) => Card(
@@ -194,7 +211,11 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const SectionHeader(title: 'Платежи', actionLabel: 'Экспорт'),
+          SectionHeader(
+            title: 'Payments',
+            actionLabel: 'Export',
+            onActionPressed: () => _showSnackBar(context, 'Exporting payments'),
+          ),
           const SizedBox(height: 12),
           Card(
             child: Column(
@@ -225,7 +246,7 @@ class DashboardScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Всего за октябрь',
+                        'Total for October',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                       Text(
@@ -241,7 +262,11 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const SectionHeader(title: 'Клиенты', actionLabel: 'Добавить'),
+          SectionHeader(
+            title: 'Clients',
+            actionLabel: 'Add',
+            onActionPressed: () => _showSnackBar(context, 'Adding a new client'),
+          ),
           const SizedBox(height: 12),
           ...clients.map(
             (client) => Card(
@@ -281,14 +306,31 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        onPressed: () => _showSnackBar(context, 'Creating a new project'),
         icon: const Icon(Icons.add),
-        label: const Text('Новый проект'),
+        label: const Text('New project'),
       ),
     );
   }
 
+  void _showSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}';
+    return '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+  }
+
+  bool _isWithinDays(DateTime reference, DateTime date, int days) {
+    final normalizedReference = DateTime(reference.year, reference.month, reference.day);
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final difference = normalizedDate.difference(normalizedReference).inDays;
+    return difference >= 0 && difference <= days;
+  }
+
+  String _formatCurrency(double amount) {
+    return '€${amount.toStringAsFixed(0)}';
   }
 }
