@@ -32,7 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedProjectClient;
   String? _selectedProjectStage;
   DateTime? _selectedProjectDeadline;
-  final ScrollController _scrollController = ScrollController();
+  late final ScrollController _scrollController;
   bool _showMascot = false;
 
   final List<Client> _clients = [
@@ -64,6 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _packageInfoFuture = PackageInfo.fromPlatform();
+    _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
   }
 
@@ -80,23 +81,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _projectNameController.dispose();
     _projectAmountController.dispose();
     _depositPercentController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _packageInfoFuture = PackageInfo.fromPlatform();
-  }
-
-  @override
-  void dispose() {
-    _clientNameController.dispose();
-    _plannedBudgetController.dispose();
-    _contactNameController.dispose();
-    _contactPhoneController.dispose();
-    _contactEmailController.dispose();
-    _contactTelegramController.dispose();
     super.dispose();
   }
 
