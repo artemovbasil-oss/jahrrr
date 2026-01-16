@@ -19,12 +19,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedContractType;
   late final Future<PackageInfo> _packageInfoFuture;
   final GlobalKey<FormState> _clientFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _projectFormKey = GlobalKey<FormState>();
   final TextEditingController _clientNameController = TextEditingController();
   final TextEditingController _plannedBudgetController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
   final TextEditingController _contactPhoneController = TextEditingController();
   final TextEditingController _contactEmailController = TextEditingController();
   final TextEditingController _contactTelegramController = TextEditingController();
+  final TextEditingController _projectNameController = TextEditingController();
+  final TextEditingController _projectAmountController = TextEditingController();
+  final TextEditingController _depositPercentController = TextEditingController();
+  String? _selectedProjectClient;
+  String? _selectedProjectStage;
+  DateTime? _selectedProjectDeadline;
+  final ScrollController _scrollController = ScrollController();
+  bool _showMascot = false;
 
   final List<Client> _clients = [
         Client(
@@ -49,6 +58,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
           deadline: DateTime(2024, 11, 22),
         ),
       ];
+  final List<_Project> _projects = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    _clientNameController.dispose();
+    _plannedBudgetController.dispose();
+    _contactNameController.dispose();
+    _contactPhoneController.dispose();
+    _contactEmailController.dispose();
+    _contactTelegramController.dispose();
+    _projectNameController.dispose();
+    _projectAmountController.dispose();
+    _depositPercentController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -158,6 +191,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(20),
         children: [
           GridView.count(
@@ -172,28 +206,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: 'Active projects',
                 value: activeProjects.toString(),
                 subtitle: 'Across ${_clients.length} clients',
-                color: Color(0xFF4F46E5),
+                color: Color(0xFF3ACFE0),
                 onTap: () => _showSnackBar(context, 'Opening active projects'),
               ),
               StatCard(
                 title: 'Budget in progress',
                 value: _formatCurrency(totalBudget),
                 subtitle: 'Across ${_clients.length} projects',
-                color: Color(0xFF10B981),
+                color: Color(0xFF7AA37C),
                 onTap: () => _showSnackBar(context, 'Reviewing budget in progress'),
               ),
               StatCard(
                 title: 'Deadlines this week',
                 value: deadlinesThisWeek.toString(),
                 subtitle: 'Next 7 days',
-                color: Color(0xFFF59E0B),
+                color: Color(0xFFF47A64),
                 onTap: () => _showSnackBar(context, 'Checking weekly deadlines'),
               ),
               StatCard(
                 title: 'Upcoming payments',
                 value: _formatCurrency(upcomingPayments),
                 subtitle: 'Next 7 days',
-                color: Color(0xFFEC4899),
+                color: Color(0xFFB8432D),
                 onTap: () => _showSnackBar(context, 'Reviewing upcoming payments'),
               ),
             ],
@@ -363,6 +397,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _buildMascotReveal(),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -376,6 +412,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+    final shouldShow = position.pixels >= position.maxScrollExtent - 40;
+    if (shouldShow != _showMascot) {
+      setState(() {
+        _showMascot = shouldShow;
+      });
+    }
+  }
+
+  Widget _buildMascotReveal() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 500),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final offsetAnimation = Tween<Offset>(
+          begin: const Offset(0, 0.25),
+          end: Offset.zero,
+        ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: offsetAnimation,
+            child: child,
+          ),
+        );
+      },
+      child: _showMascot
+          ? Container(
+              key: const ValueKey('mascot'),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Text(
+                      '🐙',
+                      style: TextStyle(fontSize: 32),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        'Jahrrr! You made it to the end.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : const SizedBox(key: ValueKey('mascot-empty')),
     );
   }
 
@@ -626,7 +744,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _showSnackBar(context, 'Create a client first');
                     return;
                   }
-                  _showSnackBar(context, 'Select a client to create a project');
+                  _showProjectForm();
                 },
               ),
             ],
@@ -634,6 +752,297 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       },
     );
+  }
+
+  void _showProjectForm() {
+    _projectNameController.clear();
+    _projectAmountController.clear();
+    _depositPercentController.clear();
+    _selectedProjectClient = null;
+    _selectedProjectStage = null;
+    _selectedProjectDeadline = null;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final selectedClient = _selectedProjectClient == null
+                ? null
+                : _clients.firstWhere((client) => client.name == _selectedProjectClient);
+            final isFirstProject = selectedClient == null
+                ? false
+                : _projects.where((project) => project.clientName == selectedClient.name).isEmpty;
+
+            return AlertDialog(
+              title: const Text('New project'),
+              content: Form(
+                key: _projectFormKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: _selectedProjectClient,
+                        decoration: const InputDecoration(
+                          labelText: 'Client',
+                        ),
+                        items: _clients
+                            .map(
+                              (client) => DropdownMenuItem(
+                                value: client.name,
+                                child: Text(client.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            _selectedProjectClient = value;
+                            if (value == null) {
+                              _projectAmountController.clear();
+                              return;
+                            }
+                            final client = _clients.firstWhere((c) => c.name == value);
+                            final hasProjects = _projects
+                                .any((project) => project.clientName == client.name);
+                            if (hasProjects) {
+                              _projectAmountController.clear();
+                            } else {
+                              _projectAmountController.text =
+                                  client.budget == 0 ? '' : client.budget.toStringAsFixed(0);
+                            }
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Select a client';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _projectNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Project name',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a project name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _projectAmountController,
+                        decoration: InputDecoration(
+                          labelText: isFirstProject
+                              ? 'Project amount (€) (prefilled)'
+                              : 'Project amount (€)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          if (!isFirstProject && (value == null || value.trim().isEmpty)) {
+                            return 'Enter a project amount';
+                          }
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a project amount';
+                          }
+                          final parsed = double.tryParse(value.replaceAll(',', '.'));
+                          if (parsed == null || parsed <= 0) {
+                            return 'Enter a valid amount';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _selectedProjectStage,
+                        decoration: const InputDecoration(
+                          labelText: 'Project stage',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'First meeting',
+                            child: Text('First meeting'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Deposit received',
+                            child: Text('Deposit received'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'In progress',
+                            child: Text('In progress'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Awaiting feedback',
+                            child: Text('Awaiting feedback'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Returned for revision',
+                            child: Text('Returned for revision'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Renegotiating budget',
+                            child: Text('Renegotiating budget'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Project on hold',
+                            child: Text('Project on hold'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Payment received in full',
+                            child: Text('Payment received in full'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setDialogState(() {
+                            _selectedProjectStage = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Select a project stage';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (_selectedProjectStage == 'Deposit received') ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _depositPercentController,
+                          decoration: const InputDecoration(
+                            labelText: 'Deposit percent (%)',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (value) {
+                            if (_selectedProjectStage != 'Deposit received') {
+                              return null;
+                            }
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Enter a deposit percent';
+                            }
+                            final parsed = double.tryParse(value.replaceAll(',', '.'));
+                            if (parsed == null || parsed <= 0 || parsed > 100) {
+                              return 'Enter a valid percent';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Deadline to next stage'),
+                        subtitle: Text(
+                          _selectedProjectDeadline == null
+                              ? 'Select a date'
+                              : _formatDate(_selectedProjectDeadline!),
+                        ),
+                        trailing: const Icon(Icons.calendar_today_outlined),
+                        onTap: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: _selectedProjectDeadline ?? now,
+                            firstDate: now,
+                            lastDate: DateTime(now.year + 5),
+                          );
+                          if (picked == null) {
+                            return;
+                          }
+                          setDialogState(() {
+                            _selectedProjectDeadline = picked;
+                          });
+                        },
+                      ),
+                      if (_selectedProjectDeadline == null) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Select a deadline',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final isValid = _projectFormKey.currentState?.validate() ?? false;
+                    if (_selectedProjectDeadline == null) {
+                      setDialogState(() {});
+                      return;
+                    }
+                    if (!isValid) {
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop();
+                    _addProject();
+                  },
+                  child: const Text('Add project'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _addProject() {
+    final clientName = _selectedProjectClient;
+    if (clientName == null) {
+      _showSnackBar(context, 'Select a client');
+      return;
+    }
+    final amount =
+        double.tryParse(_projectAmountController.text.trim().replaceAll(',', '.')) ?? 0;
+    final stage = _selectedProjectStage ?? 'First meeting';
+    final depositPercent = _selectedProjectStage == 'Deposit received'
+        ? double.tryParse(_depositPercentController.text.trim().replaceAll(',', '.'))
+        : null;
+    final deadline = _selectedProjectDeadline ?? DateTime.now();
+    final existingProjects = _projects.where((project) => project.clientName == clientName).length;
+
+    setState(() {
+      _projects.add(
+        _Project(
+          clientName: clientName,
+          name: _projectNameController.text.trim(),
+          amount: amount,
+          stage: stage,
+          depositPercent: depositPercent,
+          nextStageDeadline: deadline,
+        ),
+      );
+
+      final clientIndex = _clients.indexWhere((client) => client.name == clientName);
+      if (clientIndex != -1) {
+        final client = _clients[clientIndex];
+        final updatedBudget =
+            existingProjects == 0 ? amount : client.budget + amount;
+        _clients[clientIndex] = Client(
+          name: client.name,
+          project: _projectNameController.text.trim(),
+          status: 'Active',
+          budget: updatedBudget,
+          deadline: deadline,
+        );
+      }
+    });
+
+    _showSnackBar(context, 'Project added');
   }
 
   void _updateClientStatusFilter(String? status) {
@@ -656,4 +1065,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _formatCurrency(double amount) {
     return '€${amount.toStringAsFixed(0)}';
   }
+}
+
+class _Project {
+  const _Project({
+    required this.clientName,
+    required this.name,
+    required this.amount,
+    required this.stage,
+    required this.nextStageDeadline,
+    this.depositPercent,
+  });
+
+  final String clientName;
+  final String name;
+  final double amount;
+  final String stage;
+  final double? depositPercent;
+  final DateTime nextStageDeadline;
 }
