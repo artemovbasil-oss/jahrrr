@@ -113,13 +113,14 @@ class DashboardScreen extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             childAspectRatio: 1.25,
-            children: const [
+            children: [
               StatCard(
                 title: 'Active projects',
                 value: '6',
                 subtitle: '+2 this month',
                 icon: Icons.auto_graph,
                 color: Color(0xFF4F46E5),
+                onTap: () => _showSnackBar(context, 'Opening active projects'),
               ),
               StatCard(
                 title: 'Budget in progress',
@@ -127,6 +128,7 @@ class DashboardScreen extends StatelessWidget {
                 subtitle: '75% collected',
                 icon: Icons.account_balance_wallet_outlined,
                 color: Color(0xFF10B981),
+                onTap: () => _showSnackBar(context, 'Reviewing budget in progress'),
               ),
               StatCard(
                 title: 'Deadlines this week',
@@ -134,6 +136,7 @@ class DashboardScreen extends StatelessWidget {
                 subtitle: '2 at risk',
                 icon: Icons.timer_outlined,
                 color: Color(0xFFF59E0B),
+                onTap: () => _showSnackBar(context, 'Checking weekly deadlines'),
               ),
               StatCard(
                 title: 'Upcoming payments',
@@ -141,6 +144,7 @@ class DashboardScreen extends StatelessWidget {
                 subtitle: 'Next 5 days',
                 icon: Icons.payments_outlined,
                 color: Color(0xFFEC4899),
+                onTap: () => _showSnackBar(context, 'Reviewing upcoming payments'),
               ),
             ],
           ),
