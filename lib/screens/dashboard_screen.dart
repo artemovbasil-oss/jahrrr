@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/client.dart';
-import '../models/milestone.dart';
 import '../models/payment.dart';
 import '../widgets/section_header.dart';
 import '../widgets/stat_card.dart';
@@ -15,6 +14,17 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  static const List<String> _projectStages = [
+    'First meeting',
+    'Deposit received',
+    'In progress',
+    'Awaiting feedback',
+    'Returned for revision',
+    'Renegotiating budget',
+    'Project on hold',
+    'Payment received in full',
+  ];
+
   String? _selectedClientStatus;
   String? _selectedContractType;
   late final Future<PackageInfo> _packageInfoFuture;
@@ -35,29 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final ScrollController _scrollController;
   bool _showMascot = false;
 
-  final List<Client> _clients = [
-        Client(
-          name: 'Studio Puncto',
-          project: 'Brand identity refresh',
-          status: 'In production',
-          budget: 4800,
-          deadline: DateTime(2024, 11, 14),
-        ),
-        Client(
-          name: 'Lunar Cafe',
-          project: 'Menu and packaging',
-          status: 'Concept',
-          budget: 2100,
-          deadline: DateTime(2024, 10, 30),
-        ),
-        Client(
-          name: 'Nova Interiors',
-          project: 'Digital presentation',
-          status: 'Finalization',
-          budget: 3200,
-          deadline: DateTime(2024, 11, 22),
-        ),
-      ];
+  final List<Client> _clients = [];
   final List<_Project> _projects = [];
 
   @override
@@ -84,56 +72,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  List<Milestone> get milestones => [
-        Milestone(
-          title: 'Moodboard approval',
-          client: 'Studio Puncto',
-          dueDate: DateTime(2024, 10, 18),
-          progress: 0.72,
-        ),
-        Milestone(
-          title: 'Landing page prototype',
-          client: 'Nova Interiors',
-          dueDate: DateTime(2024, 10, 24),
-          progress: 0.48,
-        ),
-      ];
-
-  List<Payment> get payments => [
-        Payment(
-          client: 'Lunar Cafe',
-          amount: 900,
-          date: DateTime(2024, 10, 12),
-          stage: 'Deposit',
-        ),
-        Payment(
-          client: 'Studio Puncto',
-          amount: 1400,
-          date: DateTime(2024, 10, 8),
-          stage: 'Sprint 1',
-        ),
-        Payment(
-          client: 'Nova Interiors',
-          amount: 700,
-          date: DateTime(2024, 10, 5),
-          stage: 'Research',
-        ),
-      ];
+  final List<Payment> _payments = [];
 
   @override
   Widget build(BuildContext context) {
     final referenceDate = DateTime(2024, 10, 1);
-    final activeProjects = _clients.length;
+    final activeProjects = _projects.length;
     final totalBudget = _clients.fold<double>(0, (sum, client) => sum + client.budget);
     final deadlinesThisWeek =
-        milestones.where((milestone) => _isWithinDays(referenceDate, milestone.dueDate, 7)).length;
-    final upcomingPayments = payments
+        _projects.where((project) => _isWithinDays(referenceDate, project.nextStageDeadline, 7)).length;
+    final upcomingPayments = _payments
         .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
         .fold<double>(0, (sum, payment) => sum + payment.amount);
-    final clientStatuses = _clients.map((client) => client.status).toSet().toList()..sort();
+    final clientStatuses = _projectStages;
     final visibleClients = _selectedClientStatus == null
         ? _clients
-        : _clients.where((client) => client.status == _selectedClientStatus).toList();
+        : _clients
+            .where(
+              (client) => _projects.any(
+                (project) =>
+                    project.clientName == client.name &&
+                    project.stage == _selectedClientStatus,
+              ),
+            )
+            .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -223,52 +185,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: () => _showSnackBar(context, 'Viewing all milestones'),
           ),
           const SizedBox(height: 12),
-          ...milestones.map(
-            (milestone) => Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            milestone.title,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
+          if (_projects.isEmpty)
+            _buildEmptyState('Add a project to track milestones.')
+          else
+            ..._projects.map(
+              (project) => Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              project.name,
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ),
+                          Text(
+                            _formatDate(project.nextStageDeadline),
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                           ),
-                        ),
-                        Text(
-                          _formatDate(milestone.dueDate),
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      milestone.client,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: LinearProgressIndicator(
-                        value: milestone.progress,
-                        backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                        ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        project.clientName,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        project.stage,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: LinearProgressIndicator(
+                          value: _projectStageProgress(project.stage),
+                          backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _projectStageColor(project.stage),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Payments',
@@ -276,50 +251,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: () => _showSnackBar(context, 'Exporting payments'),
           ),
           const SizedBox(height: 12),
-          Card(
-            child: Column(
-              children: [
-                ...payments.map(
-                  (payment) => ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      child: Icon(
-                        Icons.payments,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+          if (_payments.isEmpty)
+            _buildEmptyState('Add payments to see updates here.')
+          else
+            Card(
+              child: Column(
+                children: [
+                  ..._payments.map(
+                    (payment) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        child: Icon(
+                          Icons.payments,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
                       ),
-                    ),
-                    title: Text(payment.client),
-                    subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
-                    trailing: Text(
-                      '€${payment.amount.toStringAsFixed(0)}',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ),
-                ),
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total for October',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      Text(
-                        '€3 000',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      title: Text(payment.client),
+                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                      trailing: Text(
+                        '€${payment.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total for October',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        Text(
+                          _formatCurrency(
+                            _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
+                          ),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Clients',
@@ -327,60 +307,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: _showClientForm,
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ChoiceChip(
-                label: const Text('All'),
-                selected: _selectedClientStatus == null,
-                onSelected: (_) => _updateClientStatusFilter(null),
-              ),
-              ...clientStatuses.map(
-                (status) => ChoiceChip(
-                  label: Text(status),
-                  selected: _selectedClientStatus == status,
-                  onSelected: (_) => _updateClientStatusFilter(status),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: _selectedClientStatus == null,
+                  onSelected: (_) => _updateClientStatusFilter(null),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...visibleClients.map(
-            (client) => Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                  child: Icon(
-                    Icons.person,
-                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                const SizedBox(width: 8),
+                ...clientStatuses.map(
+                  (status) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(status),
+                      selected: _selectedClientStatus == status,
+                      onSelected: (_) => _updateClientStatusFilter(status),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
                   ),
                 ),
-                title: Text(client.name),
-                subtitle: Text(client.project),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '€${client.budget.toStringAsFixed(0)}',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_clients.isEmpty)
+            _buildEmptyState('Add a client to get started.')
+          else
+            ...visibleClients.map(
+              (client) => Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Icon(
+                      Icons.person,
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      client.status,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
+                  ),
+                  title: Text(client.name),
+                  subtitle: Text(client.project),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '€${client.budget.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _clientStageLabel(client.name),
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 12),
           _buildMascotReveal(),
         ],
@@ -479,6 +473,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
             )
           : const SizedBox(key: ValueKey('mascot-empty')),
     );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      ),
+    );
+  }
+
+  String _clientStageLabel(String clientName) {
+    final project = _projects.lastWhere(
+      (item) => item.clientName == clientName,
+      orElse: () => _Project.empty(),
+    );
+    return project.stage.isEmpty ? 'No projects yet' : project.stage;
   }
 
   void _showClientForm() {
@@ -846,40 +864,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Project stage',
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'First meeting',
-                            child: Text('First meeting'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Deposit received',
-                            child: Text('Deposit received'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'In progress',
-                            child: Text('In progress'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Awaiting feedback',
-                            child: Text('Awaiting feedback'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Returned for revision',
-                            child: Text('Returned for revision'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Renegotiating budget',
-                            child: Text('Renegotiating budget'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Project on hold',
-                            child: Text('Project on hold'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Payment received in full',
-                            child: Text('Payment received in full'),
-                          ),
-                        ],
+                        items: _projectStages
+                            .map(
+                              (stage) => DropdownMenuItem(
+                                value: stage,
+                                child: Text(stage),
+                              ),
+                            )
+                            .toList(),
                         onChanged: (value) {
                           setDialogState(() {
                             _selectedProjectStage = value;
@@ -1019,7 +1011,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _clients[clientIndex] = Client(
           name: client.name,
           project: _projectNameController.text.trim(),
-          status: 'Active',
+          status: stage,
           budget: updatedBudget,
           deadline: deadline,
         );
@@ -1049,6 +1041,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _formatCurrency(double amount) {
     return '€${amount.toStringAsFixed(0)}';
   }
+
+  double _projectStageProgress(String stage) {
+    switch (stage) {
+      case 'First meeting':
+        return 0.1;
+      case 'Deposit received':
+        return 0.2;
+      case 'In progress':
+        return 0.35;
+      case 'Awaiting feedback':
+        return 0.5;
+      case 'Returned for revision':
+        return 0.55;
+      case 'Renegotiating budget':
+        return 0.6;
+      case 'Project on hold':
+        return 0.6;
+      case 'Payment received in full':
+        return 1.0;
+      default:
+        return 0.0;
+    }
+  }
+
+  Color _projectStageColor(String stage) {
+    switch (stage) {
+      case 'Awaiting feedback':
+        return const Color(0xFFF47A64);
+      case 'Returned for revision':
+        return const Color(0xFFB8432D);
+      case 'Project on hold':
+        return const Color(0xFF1F1C1B);
+      default:
+        return const Color(0xFF7AA37C);
+    }
+  }
 }
 
 class _Project {
@@ -1060,6 +1088,16 @@ class _Project {
     required this.nextStageDeadline,
     this.depositPercent,
   });
+
+  factory _Project.empty() {
+    return _Project(
+      clientName: '',
+      name: '',
+      amount: 0,
+      stage: '',
+      nextStageDeadline: DateTime.now(),
+    );
+  }
 
   final String clientName;
   final String name;
