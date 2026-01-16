@@ -6,8 +6,15 @@ import '../models/payment.dart';
 import '../widgets/section_header.dart';
 import '../widgets/stat_card.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  String? _selectedClientStatus;
 
   List<Client> get clients => [
         Client(
@@ -79,6 +86,10 @@ class DashboardScreen extends StatelessWidget {
     final upcomingPayments = payments
         .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
         .fold<double>(0, (sum, payment) => sum + payment.amount);
+    final clientStatuses = clients.map((client) => client.status).toSet().toList()..sort();
+    final visibleClients = _selectedClientStatus == null
+        ? clients
+        : clients.where((client) => client.status == _selectedClientStatus).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -268,7 +279,26 @@ class DashboardScreen extends StatelessWidget {
             onActionPressed: () => _showSnackBar(context, 'Adding a new client'),
           ),
           const SizedBox(height: 12),
-          ...clients.map(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: _selectedClientStatus == null,
+                onSelected: (_) => _updateClientStatusFilter(null),
+              ),
+              ...clientStatuses.map(
+                (status) => ChoiceChip(
+                  label: Text(status),
+                  selected: _selectedClientStatus == status,
+                  onSelected: (_) => _updateClientStatusFilter(status),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...visibleClients.map(
             (client) => Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
@@ -317,6 +347,12 @@ class DashboardScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  void _updateClientStatusFilter(String? status) {
+    setState(() {
+      _selectedClientStatus = status;
+    });
   }
 
   String _formatDate(DateTime date) {
