@@ -71,6 +71,15 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final referenceDate = DateTime(2024, 10, 1);
+    final activeProjects = clients.length;
+    final totalBudget = clients.fold<double>(0, (sum, client) => sum + client.budget);
+    final deadlinesThisWeek =
+        milestones.where((milestone) => _isWithinDays(referenceDate, milestone.dueDate, 7)).length;
+    final upcomingPayments = payments
+        .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
+        .fold<double>(0, (sum, payment) => sum + payment.amount);
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -116,32 +125,32 @@ class DashboardScreen extends StatelessWidget {
             children: [
               StatCard(
                 title: 'Active projects',
-                value: '6',
-                subtitle: '+2 this month',
+                value: activeProjects.toString(),
+                subtitle: 'Across ${clients.length} clients',
                 icon: Icons.auto_graph,
                 color: Color(0xFF4F46E5),
                 onTap: () => _showSnackBar(context, 'Opening active projects'),
               ),
               StatCard(
                 title: 'Budget in progress',
-                value: '€18 400',
-                subtitle: '75% collected',
+                value: _formatCurrency(totalBudget),
+                subtitle: 'Across ${clients.length} projects',
                 icon: Icons.account_balance_wallet_outlined,
                 color: Color(0xFF10B981),
                 onTap: () => _showSnackBar(context, 'Reviewing budget in progress'),
               ),
               StatCard(
                 title: 'Deadlines this week',
-                value: '3',
-                subtitle: '2 at risk',
+                value: deadlinesThisWeek.toString(),
+                subtitle: 'Next 7 days',
                 icon: Icons.timer_outlined,
                 color: Color(0xFFF59E0B),
                 onTap: () => _showSnackBar(context, 'Checking weekly deadlines'),
               ),
               StatCard(
                 title: 'Upcoming payments',
-                value: '€4 200',
-                subtitle: 'Next 5 days',
+                value: _formatCurrency(upcomingPayments),
+                subtitle: 'Next 7 days',
                 icon: Icons.payments_outlined,
                 color: Color(0xFFEC4899),
                 onTap: () => _showSnackBar(context, 'Reviewing upcoming payments'),
@@ -312,5 +321,16 @@ class DashboardScreen extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     return '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+  }
+
+  bool _isWithinDays(DateTime reference, DateTime date, int days) {
+    final normalizedReference = DateTime(reference.year, reference.month, reference.day);
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final difference = normalizedDate.difference(normalizedReference).inDays;
+    return difference >= 0 && difference <= days;
+  }
+
+  String _formatCurrency(double amount) {
+    return '€${amount.toStringAsFixed(0)}';
   }
 }
