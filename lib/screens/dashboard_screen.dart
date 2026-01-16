@@ -83,6 +83,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+  }
+
+  @override
+  void dispose() {
+    _clientNameController.dispose();
+    _plannedBudgetController.dispose();
+    _contactNameController.dispose();
+    _contactPhoneController.dispose();
+    _contactEmailController.dispose();
+    _contactTelegramController.dispose();
+    super.dispose();
+  }
+
   List<Milestone> get milestones => [
         Milestone(
           title: 'Moodboard approval',
