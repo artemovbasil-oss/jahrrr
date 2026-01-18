@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/client.dart';
 import '../models/payment.dart';
@@ -44,6 +47,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _selectedProjectDeadline;
   late final ScrollController _scrollController;
   bool _showMascot = false;
+  bool _isLoading = true;
 
   final List<Client> _clients = [];
   final List<_Project> _projects = [];
@@ -54,6 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _packageInfoFuture = PackageInfo.fromPlatform();
     _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
+    _loadData();
   }
 
   @override
@@ -77,13 +82,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final referenceDate = DateTime(2024, 10, 1);
-    final activeProjects = _projects.length;
-    final totalBudget = _clients.fold<double>(0, (sum, client) => sum + client.budget);
+    final activeProjects = _isLoading ? 0 : _projects.length;
+    final totalBudget =
+        _isLoading ? 0 : _clients.fold<double>(0, (sum, client) => sum + client.budget);
     final deadlinesThisWeek =
-        _projects.where((project) => _isWithinDays(referenceDate, project.nextStageDeadline, 7)).length;
-    final upcomingPayments = _payments
-        .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
-        .fold<double>(0, (sum, payment) => sum + payment.amount);
+        _isLoading
+            ? 0
+            : _projects
+                .where((project) => _isWithinDays(referenceDate, project.nextStageDeadline, 7))
+                .length;
+    final upcomingPayments = _isLoading
+        ? 0
+        : _payments
+            .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
+            .fold<double>(0, (sum, payment) => sum + payment.amount);
     final clientStatuses = _projectStages;
     final visibleClients = _selectedClientStatus == null
         ? _clients
@@ -185,7 +197,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: () => _showSnackBar(context, 'Viewing all milestones'),
           ),
           const SizedBox(height: 12),
-          if (_projects.isEmpty)
+          if (_isLoading)
+            _buildEmptyState('Loading milestones...')
+          else if (_projects.isEmpty)
             _buildEmptyState('Add a project to track milestones.')
           else
             ..._projects.map(
@@ -251,7 +265,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: () => _showSnackBar(context, 'Exporting payments'),
           ),
           const SizedBox(height: 12),
-          if (_payments.isEmpty)
+          if (_isLoading)
+            _buildEmptyState('Loading payments...')
+          else if (_payments.isEmpty)
             _buildEmptyState('Add payments to see updates here.')
           else
             Card(
@@ -337,7 +353,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          if (_clients.isEmpty)
+          if (_isLoading)
+            _buildEmptyState('Loading clients...')
+          else if (_clients.isEmpty)
             _buildEmptyState('Add a client to get started.')
           else
             ...visibleClients.map(
@@ -390,6 +408,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final clientsData = prefs.getString('clients');
+      final projectsData = prefs.getString('projects');
+      if (clientsData != null) {
+        final decoded = jsonDecode(clientsData) as List<dynamic>;
+        _clients
+          ..clear()
+          ..addAll(
+            decoded
+                .whereType<Map<String, dynamic>>()
+                .map(Client.fromJson),
+          );
+      }
+      if (projectsData != null) {
+        final decoded = jsonDecode(projectsData) as List<dynamic>;
+        _projects
+          ..clear()
+          ..addAll(
+            decoded
+                .whereType<Map<String, dynamic>>()
+                .map(_Project.fromJson),
+          );
+      }
+    } catch (_) {
+      _clients.clear();
+      _projects.clear();
+    } finally {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _persistData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'clients',
+      jsonEncode(_clients.map((client) => client.toJson()).toList()),
+    );
+    await prefs.setString(
+      'projects',
+      jsonEncode(_projects.map((project) => project.toJson()).toList()),
     );
   }
 
@@ -651,7 +719,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _addClient() {
+  Future<void> _addClient() async {
     final contractType = _selectedContractType ?? 'Project';
     final contactName = _contactNameController.text.trim();
     final contactPhone = _contactPhoneController.text.trim();
@@ -678,6 +746,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     });
+    await _persistData();
+    if (!mounted) {
+      return;
+    }
     _showSnackBar(context, 'Client added');
   }
 
@@ -976,7 +1048,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _addProject() {
+  Future<void> _addProject() async {
     final clientName = _selectedProjectClient;
     if (clientName == null) {
       _showSnackBar(context, 'Select a client');
@@ -1017,7 +1089,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     });
-
+    await _persistData();
+    if (!mounted) {
+      return;
+    }
     _showSnackBar(context, 'Project added');
   }
 
@@ -1097,6 +1172,29 @@ class _Project {
       stage: '',
       nextStageDeadline: DateTime.now(),
     );
+  }
+
+  factory _Project.fromJson(Map<String, dynamic> json) {
+    return _Project(
+      clientName: json['clientName'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      stage: json['stage'] as String? ?? '',
+      nextStageDeadline:
+          DateTime.tryParse(json['nextStageDeadline'] as String? ?? '') ?? DateTime.now(),
+      depositPercent: (json['depositPercent'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'clientName': clientName,
+      'name': name,
+      'amount': amount,
+      'stage': stage,
+      'nextStageDeadline': nextStageDeadline.toIso8601String(),
+      'depositPercent': depositPercent,
+    };
   }
 
   final String clientName;
