@@ -1659,6 +1659,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return upcoming;
   }
 
+  Payment? _nextRetainerPayment(DateTime reference) {
+    final normalizedReference = DateTime(reference.year, reference.month, reference.day);
+    final upcoming = _payments
+        .where(
+          (payment) =>
+              payment.stage == _retainerPaymentStage &&
+              !payment.date.isBefore(normalizedReference),
+        )
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (upcoming.isEmpty) {
+      return null;
+    }
+    return upcoming.first;
+  }
+
   void _addRetainerPayments({
     required String clientName,
     required double amount,
@@ -1738,6 +1754,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
       default:
         return const Color(0xFF7AA37C);
     }
+  }
+}
+
+class _UpcomingRetainerPaymentCard extends StatelessWidget {
+  const _UpcomingRetainerPaymentCard({
+    required this.payment,
+    required this.formattedAmount,
+    required this.formattedDate,
+  });
+
+  final Payment payment;
+  final String formattedAmount;
+  final String formattedDate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              child: Icon(
+                Icons.calendar_today,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Next retainer payment',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${payment.client} • $formattedDate',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              formattedAmount,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
