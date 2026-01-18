@@ -107,6 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final referenceDate = DateTime(2024, 10, 1);
+    final now = DateTime.now();
     final activeProjects = _isLoading ? 0 : _projects.length;
     final double totalBudget =
         _isLoading ? 0 : _clients.fold<double>(0, (sum, client) => sum + client.budget);
@@ -116,11 +117,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : _projects
                 .where((project) => _isWithinDays(referenceDate, project.nextStageDeadline, 7))
                 .length;
+    final upcomingPaymentItems =
+        _isLoading ? <Payment>[] : _buildUpcomingPayments(now);
     final double upcomingPayments = _isLoading
         ? 0
-        : _payments
-            .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
-            .fold<double>(0, (sum, payment) => sum + payment.amount);
+        : upcomingPaymentItems.fold<double>(0, (sum, payment) => sum + payment.amount);
     final clientStatuses = _projectStages;
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredProjects = normalizedQuery.isEmpty
@@ -153,8 +154,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             )
             .toList();
     final filteredPayments = normalizedQuery.isEmpty
-        ? _payments
-        : _payments
+        ? upcomingPaymentItems
+        : upcomingPaymentItems
             .where(
               (payment) =>
                   payment.client.toLowerCase().contains(normalizedQuery) ||
@@ -226,7 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final paymentWidgets = _isLoading
         ? [_buildEmptyState('Loading payments...')]
         : filteredPayments.isEmpty
-            ? [_buildEmptyState('Add payments to see updates here.')]
+            ? [_buildEmptyState('No payments expected in the next 30 days.')]
             : [
                 Card(
                   child: Column(
@@ -257,7 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Total for October',
+                              'Total next 30 days',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                             Text(
@@ -1554,6 +1555,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           projects: clientProjects,
           payments: clientPayments,
           onDeleteClient: () => _deleteClient(client),
+          onUpdateClient: _updateClient,
           onDuplicateProject: _duplicateProject,
           onUpdateProject: _updateProject,
           onDeleteProject: _deleteProject,
@@ -1566,6 +1568,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _selectedClientStatus = status;
     });
+  }
+
+  Future<void> _updateClient(Client updatedClient) async {
+    setState(() {
+      final index = _clients.indexWhere((client) => client.name == updatedClient.name);
+      if (index != -1) {
+        _clients[index] = updatedClient;
+      }
+    });
+    await _persistData();
   }
 
   String _clientTypeLabel(Client client) {
@@ -1603,19 +1615,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return projectsTotal == 0 ? client.budget : projectsTotal;
   }
 
-  Payment? _nextRetainerPayment(DateTime now) {
+  List<Payment> _buildUpcomingPayments(DateTime now) {
     final windowEnd = now.add(const Duration(days: 30));
     final normalizedNow = DateTime(now.year, now.month, now.day);
-    final upcoming = _payments
-        .where(
-          (payment) =>
-              payment.stage == _retainerPaymentStage &&
-              !payment.date.isBefore(normalizedNow) &&
-              !payment.date.isAfter(windowEnd),
-        )
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
-    return upcoming.isEmpty ? null : upcoming.first;
+    final upcoming = <Payment>[];
+
+    upcoming.addAll(
+      _payments.where(
+        (payment) =>
+            payment.stage == _retainerPaymentStage &&
+            !payment.date.isBefore(normalizedNow) &&
+            !payment.date.isAfter(windowEnd),
+      ),
+    );
+
+    for (final project in _projects) {
+      final depositAmount = _depositAmount(project);
+      if (depositAmount > 0) {
+        upcoming.add(
+          Payment(
+            client: project.clientName,
+            amount: depositAmount,
+            date: normalizedNow,
+            stage: 'Deposit received',
+          ),
+        );
+      }
+      if (!_isWithinDays(normalizedNow, project.nextStageDeadline, 30)) {
+        continue;
+      }
+      final remaining = (project.amount - depositAmount).clamp(0, project.amount);
+      upcoming.add(
+        Payment(
+          client: project.clientName,
+          amount: remaining,
+          date: project.nextStageDeadline,
+          stage: project.stage,
+        ),
+      );
+    }
+
+    upcoming.sort((a, b) => a.date.compareTo(b.date));
+    return upcoming;
   }
 
   void _addRetainerPayments({
@@ -1639,6 +1680,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+
+  double _depositAmount(Project project) {
+    if (project.stage != 'Deposit received' || project.depositPercent == null) {
+      return 0;
+    }
+    return project.amount * (project.depositPercent! / 100);
   }
 
   String _formatDate(DateTime date) {
@@ -1784,80 +1832,6 @@ class _ClientCard extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _UpcomingRetainerPaymentCard extends StatelessWidget {
-  const _UpcomingRetainerPaymentCard({
-    required this.payment,
-    required this.formattedAmount,
-    required this.formattedDate,
-  });
-
-  final Payment payment;
-  final String formattedAmount;
-  final String formattedDate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: const Color(0xFFD9E4EC),
-              child: Text(
-                payment.client.isEmpty ? '?' : payment.client.substring(0, 1).toUpperCase(),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    payment.client,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Next payment • $formattedDate',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  formattedAmount,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Salary',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ],
-            ),
-          ],
         ),
       ),
     );
