@@ -1504,4 +1504,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const Color(0xFF7AA37C);
     }
   }
+
+  factory _Project.fromJson(Map<String, dynamic> json) {
+    return _Project(
+      clientName: json['clientName'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      stage: json['stage'] as String? ?? '',
+      nextStageDeadline:
+          DateTime.tryParse(json['nextStageDeadline'] as String? ?? '') ?? DateTime.now(),
+      depositPercent: (json['depositPercent'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'clientName': clientName,
+      'name': name,
+      'amount': amount,
+      'stage': stage,
+      'nextStageDeadline': nextStageDeadline.toIso8601String(),
+      'depositPercent': depositPercent,
+    };
+  }
+
+  final String clientName;
+  final String name;
+  final double amount;
+  final String stage;
+  final double? depositPercent;
+  final DateTime nextStageDeadline;
 }
