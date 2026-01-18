@@ -365,6 +365,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                   ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 24),
+          SectionHeader(
+            title: 'Clients',
+            actionLabel: 'Add',
+            onActionPressed: _showClientForm,
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: _selectedClientStatus == null,
+                  onSelected: (_) => _updateClientStatusFilter(null),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ],
             ),
