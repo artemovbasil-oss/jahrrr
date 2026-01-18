@@ -319,6 +319,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           'Total for October',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
+                      ),
+                      title: Text(payment.client),
+                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                      trailing: Text(
+                        '€${payment.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                         Text(
                           _formatCurrency(
                             _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
