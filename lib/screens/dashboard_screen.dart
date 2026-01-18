@@ -119,6 +119,161 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             )
             .toList();
+    final milestoneWidgets = _isLoading
+        ? [_buildEmptyState('Loading milestones...')]
+        : _projects.isEmpty
+            ? [_buildEmptyState('Add a project to track milestones.')]
+            : _projects
+                .map(
+                  (project) => Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  project.name,
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                              Text(
+                                _formatDate(project.nextStageDeadline),
+                                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            project.clientName,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            project.stage,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: LinearProgressIndicator(
+                              value: _projectStageProgress(project.stage),
+                              backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                _projectStageColor(project.stage),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+                .toList();
+    final paymentWidgets = _isLoading
+        ? [_buildEmptyState('Loading payments...')]
+        : _payments.isEmpty
+            ? [_buildEmptyState('Add payments to see updates here.')]
+            : [
+                Card(
+                  child: Column(
+                    children: [
+                      ..._payments.map(
+                        (payment) => ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            child: Icon(
+                              Icons.payments,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                          title: Text(payment.client),
+                          subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                          trailing: Text(
+                            '€${payment.amount.toStringAsFixed(0)}',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Total for October',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            Text(
+                              _formatCurrency(
+                                _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
+                              ),
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ];
+    final clientWidgets = _isLoading
+        ? [_buildEmptyState('Loading clients...')]
+        : _clients.isEmpty
+            ? [_buildEmptyState('Add a client to get started.')]
+            : visibleClients
+                .map(
+                  (client) => Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                        child: Icon(
+                          Icons.person,
+                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                        ),
+                      ),
+                      title: Text(client.name),
+                      subtitle: Text(client.project),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '€${client.budget.toStringAsFixed(0)}',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _clientStageLabel(client.name),
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+                .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -208,67 +363,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: () => _showSnackBar(context, 'Viewing all milestones'),
           ),
           const SizedBox(height: 12),
-          if (_isLoading)
-            _buildEmptyState('Loading milestones...')
-          else if (_projects.isEmpty)
-            _buildEmptyState('Add a project to track milestones.')
-          else
-            ..._projects.map(
-              (project) => Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              project.name,
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                          ),
-                          Text(
-                            _formatDate(project.nextStageDeadline),
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        project.clientName,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        project.stage,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: LinearProgressIndicator(
-                          value: _projectStageProgress(project.stage),
-                          backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            _projectStageColor(project.stage),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          ...milestoneWidgets,
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Payments',
@@ -282,109 +377,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           const SizedBox(height: 12),
-          if (_isLoading)
-            _buildEmptyState('Loading payments...')
-          else if (_payments.isEmpty)
-            _buildEmptyState('Add payments to see updates here.')
-          else
-            Card(
-              child: Column(
-                children: [
-                  ..._payments.map(
-                    (payment) => ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                        child: Icon(
-                          Icons.payments,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                      title: Text(payment.client),
-                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
-                      trailing: Text(
-                        '€${payment.amount.toStringAsFixed(0)}',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Total for October',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(height: 24),
-          SectionHeader(
-            title: 'Payments',
-            actionLabel: 'Add',
-            onActionPressed: () {
-              if (_clients.isEmpty) {
-                _showSnackBar(context, 'Create a client first');
-                return;
-              }
-              _showPaymentForm();
-            },
-          ),
-          const SizedBox(height: 12),
-          if (_isLoading)
-            _buildEmptyState('Loading payments...'),
-          else if (_payments.isEmpty)
-            _buildEmptyState('Add payments to see updates here.'),
-          else
-            Card(
-              child: Column(
-                children: [
-                  ..._payments.map(
-                    (payment) => ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                        child: Icon(
-                          Icons.payments,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                      title: Text(payment.client),
-                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
-                      trailing: Text(
-                        '€${payment.amount.toStringAsFixed(0)}',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _formatCurrency(
-                            _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
-                          ),
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          ...paymentWidgets,
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Clients',
@@ -417,72 +410,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                   ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-          SectionHeader(
-            title: 'Clients',
-            actionLabel: 'Add',
-            onActionPressed: _showClientForm,
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('All'),
-                  selected: _selectedClientStatus == null,
-                  onSelected: (_) => _updateClientStatusFilter(null),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          if (_isLoading)
-            _buildEmptyState('Loading clients...')
-          else if (_clients.isEmpty)
-            _buildEmptyState('Add a client to get started.')
-          else
-            ...visibleClients.map(
-              (client) => Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                    child: Icon(
-                      Icons.person,
-                      color: Theme.of(context).colorScheme.onSecondaryContainer,
-                    ),
-                  ),
-                  title: Text(client.name),
-                  subtitle: Text(client.project),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '€${client.budget.toStringAsFixed(0)}',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _clientStageLabel(client.name),
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          ...clientWidgets,
           const SizedBox(height: 12),
           _buildMascotReveal(),
         ],
