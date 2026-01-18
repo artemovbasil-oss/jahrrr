@@ -209,9 +209,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 12),
           if (_isLoading)
-            _buildEmptyState('Loading milestones...')
+            _buildEmptyState('Loading milestones...'),
           else if (_projects.isEmpty)
-            _buildEmptyState('Add a project to track milestones.')
+            _buildEmptyState('Add a project to track milestones.'),
           else
             ..._projects.map(
               (project) => Card(
@@ -283,9 +283,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 12),
           if (_isLoading)
-            _buildEmptyState('Loading payments...')
+            _buildEmptyState('Loading payments...'),
           else if (_payments.isEmpty)
-            _buildEmptyState('Add payments to see updates here.')
+            _buildEmptyState('Add payments to see updates here.'),
           else
             Card(
               child: Column(
@@ -319,58 +319,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           'Total for October',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(height: 24),
-          SectionHeader(
-            title: 'Payments',
-            actionLabel: 'Add',
-            onActionPressed: () {
-              if (_clients.isEmpty) {
-                _showSnackBar(context, 'Create a client first');
-                return;
-              }
-              _showPaymentForm();
-            },
-          ),
-          const SizedBox(height: 12),
-          if (_isLoading)
-            _buildEmptyState('Loading payments...')
-          else if (_payments.isEmpty)
-            _buildEmptyState('Add payments to see updates here.')
-          else
-            Card(
-              child: Column(
-                children: [
-                  ..._payments.map(
-                    (payment) => ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                        child: Icon(
-                          Icons.payments,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                      title: Text(payment.client),
-                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
-                      trailing: Text(
-                        '€${payment.amount.toStringAsFixed(0)}',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
                         Text(
                           _formatCurrency(
                             _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
@@ -379,15 +327,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
-                      ),
-                      title: Text(payment.client),
-                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
-                      trailing: Text(
-                        '€${payment.amount.toStringAsFixed(0)}',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
+                      ],
                     ),
                   ),
                 ],
@@ -425,15 +365,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                   ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 24),
+          SectionHeader(
+            title: 'Clients',
+            actionLabel: 'Add',
+            onActionPressed: _showClientForm,
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: _selectedClientStatus == null,
+                  onSelected: (_) => _updateClientStatusFilter(null),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
           if (_isLoading)
-            _buildEmptyState('Loading clients...')
+            _buildEmptyState('Loading clients...'),
           else if (_clients.isEmpty)
-            _buildEmptyState('Add a client to get started.')
+            _buildEmptyState('Add a client to get started.'),
           else
             ...visibleClients.map(
               (client) => Card(
