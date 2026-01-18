@@ -1644,7 +1644,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!_isWithinDays(normalizedNow, project.nextStageDeadline, 30)) {
         continue;
       }
-      final remaining = (project.amount - depositAmount).clamp(0, project.amount);
+      final remaining = (project.amount - depositAmount).clamp(0, project.amount).toDouble();
       upcoming.add(
         Payment(
           client: project.clientName,
