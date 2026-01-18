@@ -5,10 +5,12 @@ class SectionHeader extends StatelessWidget {
     super.key,
     required this.title,
     required this.actionLabel,
+    this.onActionPressed,
   });
 
   final String title;
   final String actionLabel;
+  final VoidCallback? onActionPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +24,7 @@ class SectionHeader extends StatelessWidget {
               ),
         ),
         TextButton(
-          onPressed: () {},
+          onPressed: onActionPressed,
           child: Text(actionLabel),
         ),
       ],
