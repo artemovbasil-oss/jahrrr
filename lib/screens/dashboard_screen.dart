@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/client.dart';
 import '../models/payment.dart';
+import '../models/project.dart';
 import '../widgets/section_header.dart';
 import '../widgets/stat_card.dart';
+import 'client_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -63,7 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _searchQuery = '';
 
   final List<Client> _clients = [];
-  final List<_Project> _projects = [];
+  final List<Project> _projects = [];
 
   @override
   void initState() {
@@ -286,6 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       title: Text(client.name),
                       subtitle: Text(client.project),
+                      onTap: () => _openClientDetails(client),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -516,7 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ..addAll(
             decoded
                 .whereType<Map<String, dynamic>>()
-                .map(_Project.fromJson),
+                .map(Project.fromJson),
           );
       }
       if (paymentsData != null) {
@@ -660,7 +663,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _clientStageLabel(String clientName) {
     final project = _projects.lastWhere(
       (item) => item.clientName == clientName,
-      orElse: () => _Project.empty(),
+      orElse: Project.empty,
     );
     return project.stage.isEmpty ? 'No projects yet' : project.stage;
   }
@@ -1344,11 +1347,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? double.tryParse(_depositPercentController.text.trim().replaceAll(',', '.'))
         : null;
     final deadline = _selectedProjectDeadline ?? DateTime.now();
-    final existingProjects = _projects.where((project) => project.clientName == clientName).length;
-
     setState(() {
       _projects.add(
-        _Project(
+        Project(
           clientName: clientName,
           name: _projectNameController.text.trim(),
           amount: amount,
@@ -1357,26 +1358,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
           nextStageDeadline: deadline,
         ),
       );
-
-      final clientIndex = _clients.indexWhere((client) => client.name == clientName);
-      if (clientIndex != -1) {
-        final client = _clients[clientIndex];
-        final updatedBudget =
-            existingProjects == 0 ? amount : client.budget + amount;
-        _clients[clientIndex] = Client(
-          name: client.name,
-          project: _projectNameController.text.trim(),
-          status: stage,
-          budget: updatedBudget,
-          deadline: deadline,
-        );
-      }
+      _syncClientTotals(clientName);
     });
     await _persistData();
     if (!mounted) {
       return;
     }
     _showSnackBar(context, 'Project added');
+  }
+
+  Future<void> _addProjectFromDetails(Project project) async {
+    setState(() {
+      _projects.add(project);
+      _syncClientTotals(project.clientName);
+    });
+    await _persistData();
+  }
+
+  Future<void> _deleteProject(Project project) async {
+    setState(() {
+      _projects.remove(project);
+      _syncClientTotals(project.clientName);
+    });
+    await _persistData();
+  }
+
+  Future<Project> _duplicateProject(Project project) async {
+    final duplicated = Project(
+      clientName: project.clientName,
+      name: '${project.name} (copy)',
+      amount: project.amount,
+      stage: project.stage,
+      depositPercent: project.depositPercent,
+      nextStageDeadline: project.nextStageDeadline,
+    );
+    await _addProjectFromDetails(duplicated);
+    return duplicated;
+  }
+
+  Future<void> _deleteClient(Client client) async {
+    setState(() {
+      _clients.removeWhere((item) => item.name == client.name);
+      _projects.removeWhere((item) => item.clientName == client.name);
+      _payments.removeWhere((item) => item.client == client.name);
+    });
+    await _persistData();
+  }
+
+  void _syncClientTotals(String clientName) {
+    final clientIndex = _clients.indexWhere((client) => client.name == clientName);
+    if (clientIndex == -1) {
+      return;
+    }
+    final clientProjects = _projects.where((project) => project.clientName == clientName).toList();
+    final budgetTotal =
+        clientProjects.fold<double>(0, (sum, project) => sum + project.amount);
+    final latestStage =
+        clientProjects.isEmpty ? 'New' : clientProjects.last.stage;
+    final client = _clients[clientIndex];
+    final deadline = clientProjects.isEmpty
+        ? client.deadline
+        : clientProjects.last.nextStageDeadline;
+    _clients[clientIndex] = Client(
+      name: client.name,
+      project: client.project,
+      status: latestStage,
+      budget: budgetTotal,
+      deadline: deadline,
+    );
+  }
+
+  Future<void> _openClientDetails(Client client) async {
+    final clientProjects =
+        _projects.where((project) => project.clientName == client.name).toList();
+    final clientPayments =
+        _payments.where((payment) => payment.client == client.name).toList();
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ClientDetailScreen(
+          client: client,
+          projects: clientProjects,
+          payments: clientPayments,
+          onDeleteClient: () => _deleteClient(client),
+          onDuplicateProject: _duplicateProject,
+          onDeleteProject: _deleteProject,
+        ),
+      ),
+    );
   }
 
   void _updateClientStatusFilter(String? status) {
@@ -1434,27 +1503,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       default:
         return const Color(0xFF7AA37C);
     }
-  }
-}
-
-class _Project {
-  const _Project({
-    required this.clientName,
-    required this.name,
-    required this.amount,
-    required this.stage,
-    required this.nextStageDeadline,
-    this.depositPercent,
-  });
-
-  factory _Project.empty() {
-    return _Project(
-      clientName: '',
-      name: '',
-      amount: 0,
-      stage: '',
-      nextStageDeadline: DateTime.now(),
-    );
   }
 
   factory _Project.fromJson(Map<String, dynamic> json) {
