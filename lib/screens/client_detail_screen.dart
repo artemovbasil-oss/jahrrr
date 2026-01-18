@@ -12,6 +12,7 @@ class ClientDetailScreen extends StatefulWidget {
     required this.payments,
     required this.onDeleteClient,
     required this.onDuplicateProject,
+    required this.onUpdateProject,
     required this.onDeleteProject,
   });
 
@@ -20,6 +21,7 @@ class ClientDetailScreen extends StatefulWidget {
   final List<Payment> payments;
   final Future<void> Function() onDeleteClient;
   final Future<Project> Function(Project project) onDuplicateProject;
+  final Future<void> Function(Project oldProject, Project updatedProject) onUpdateProject;
   final Future<void> Function(Project project) onDeleteProject;
 
   @override
@@ -27,6 +29,17 @@ class ClientDetailScreen extends StatefulWidget {
 }
 
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
+  static const List<String> _projectStages = [
+    'First meeting',
+    'Deposit received',
+    'In progress',
+    'Awaiting feedback',
+    'Returned for revision',
+    'Renegotiating budget',
+    'Project on hold',
+    'Payment received in full',
+  ];
+
   late List<Project> _projects;
   late List<Payment> _payments;
 
@@ -39,13 +52,12 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final paidStages = {'Deposit', 'Final payment'};
     final upcomingPayments = _payments
-        .where((payment) => !payment.date.isBefore(DateTime(now.year, now.month, now.day)))
+        .where((payment) => !paidStages.contains(payment.stage))
         .toList();
-    final pastPayments = _payments
-        .where((payment) => payment.date.isBefore(DateTime(now.year, now.month, now.day)))
-        .toList();
+    final pastPayments =
+        _payments.where((payment) => paidStages.contains(payment.stage)).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -83,6 +95,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         child: _ProjectRow(
                           project: project,
                           onDuplicate: () => _duplicateProject(project),
+                          onUpdateStage: () => _updateProjectStage(project),
                           onDelete: () => _deleteProject(project),
                           formatCurrency: _formatCurrency,
                           formatDate: _formatDate,
@@ -162,6 +175,214 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     });
   }
 
+  Future<void> _updateProjectStage(Project project) async {
+    final depositController = TextEditingController(
+      text: project.depositPercent?.toStringAsFixed(0) ?? '',
+    );
+    final budgetController = TextEditingController(
+      text: project.amount.toStringAsFixed(0),
+    );
+    var selectedStage = project.stage;
+    DateTime? selectedDeadline = project.nextStageDeadline;
+    var showErrors = false;
+
+    final shouldUpdate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Update stage'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: selectedStage.isEmpty ? null : selectedStage,
+                      decoration: const InputDecoration(
+                        labelText: 'Stage',
+                      ),
+                      items: _projectStages
+                          .map(
+                            (stage) => DropdownMenuItem(
+                              value: stage,
+                              child: Text(stage),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedStage = value ?? selectedStage;
+                        });
+                      },
+                    ),
+                    if (showErrors && (selectedStage.isEmpty)) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Select a stage',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                      ),
+                    ],
+                    if (selectedStage == 'Renegotiating budget') ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: budgetController,
+                        decoration: const InputDecoration(
+                          labelText: 'New budget (€)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      if (showErrors &&
+                          (double.tryParse(
+                                budgetController.text.trim().replaceAll(',', '.'),
+                              ) ==
+                              null)) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Enter a valid budget',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      ],
+                    ],
+                    if (selectedStage == 'Deposit received') ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: depositController,
+                        decoration: const InputDecoration(
+                          labelText: 'Deposit percent (%)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      if (showErrors &&
+                          (double.tryParse(
+                                depositController.text.trim().replaceAll(',', '.'),
+                              ) ==
+                              null)) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Enter a valid percent',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      ],
+                    ],
+                    if (selectedStage != 'Payment received in full') ...[
+                      const SizedBox(height: 12),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Deadline to next stage'),
+                        subtitle: Text(
+                          selectedDeadline == null
+                              ? 'Select a date'
+                              : _formatDate(selectedDeadline!),
+                        ),
+                        trailing: const Icon(Icons.calendar_today_outlined),
+                        onTap: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: selectedDeadline ?? now,
+                            firstDate: now,
+                            lastDate: DateTime(now.year + 5),
+                          );
+                          if (picked == null) {
+                            return;
+                          }
+                          setDialogState(() {
+                            selectedDeadline = picked;
+                          });
+                        },
+                      ),
+                      if (showErrors && selectedDeadline == null) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Select a deadline',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final depositValue = double.tryParse(
+                      depositController.text.trim().replaceAll(',', '.'),
+                    );
+                    final budgetValue = double.tryParse(
+                      budgetController.text.trim().replaceAll(',', '.'),
+                    );
+                    final hasDeadline =
+                        selectedStage == 'Payment received in full' || selectedDeadline != null;
+                    final hasValidDeposit =
+                        selectedStage != 'Deposit received' || depositValue != null;
+                    final hasValidBudget =
+                        selectedStage != 'Renegotiating budget' || budgetValue != null;
+                    if (selectedStage.isEmpty || !hasDeadline || !hasValidDeposit || !hasValidBudget) {
+                      setDialogState(() {
+                        showErrors = true;
+                      });
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  child: const Text('Update'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldUpdate != true) {
+      return;
+    }
+
+    final updatedAmount = selectedStage == 'Renegotiating budget'
+        ? double.tryParse(budgetController.text.trim().replaceAll(',', '.')) ??
+            project.amount
+        : project.amount;
+    final updatedDeposit = selectedStage == 'Deposit received'
+        ? double.tryParse(depositController.text.trim().replaceAll(',', '.'))
+        : null;
+    final updatedProject = Project(
+      clientName: project.clientName,
+      name: project.name,
+      amount: updatedAmount,
+      stage: selectedStage,
+      depositPercent: updatedDeposit,
+      nextStageDeadline: selectedStage == 'Payment received in full'
+          ? project.nextStageDeadline
+          : selectedDeadline ?? project.nextStageDeadline,
+    );
+
+    await widget.onUpdateProject(project, updatedProject);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      final index = _projects.indexOf(project);
+      if (index != -1) {
+        _projects[index] = updatedProject;
+      }
+    });
+  }
+
   String _formatDate(DateTime date) {
     return '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
   }
@@ -238,6 +459,7 @@ class _ProjectRow extends StatelessWidget {
   const _ProjectRow({
     required this.project,
     required this.onDuplicate,
+    required this.onUpdateStage,
     required this.onDelete,
     required this.formatCurrency,
     required this.formatDate,
@@ -245,6 +467,7 @@ class _ProjectRow extends StatelessWidget {
 
   final Project project;
   final VoidCallback onDuplicate;
+  final VoidCallback onUpdateStage;
   final VoidCallback onDelete;
   final String Function(double) formatCurrency;
   final String Function(DateTime) formatDate;
@@ -285,11 +508,17 @@ class _ProjectRow extends StatelessWidget {
           onSelected: (value) {
             if (value == 'duplicate') {
               onDuplicate();
+            } else if (value == 'update-stage') {
+              onUpdateStage();
             } else if (value == 'delete') {
               onDelete();
             }
           },
           itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: 'update-stage',
+              child: Text('Change stage'),
+            ),
             PopupMenuItem(
               value: 'duplicate',
               child: Text('Duplicate'),

@@ -55,6 +55,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedProjectClient;
   String? _selectedProjectStage;
   DateTime? _selectedProjectDeadline;
+  DateTime? _selectedRetainerPayDate;
+  String? _selectedRetainerFrequency;
   String? _selectedPaymentClient;
   String? _selectedPaymentStage;
   DateTime? _selectedPaymentDate;
@@ -102,6 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final activeProjects = _isLoading ? 0 : _projects.length;
     final double totalBudget =
         _isLoading ? 0 : _clients.fold<double>(0, (sum, client) => sum + client.budget);
+    final nextRetainerPayment = _isLoading ? null : _nextRetainerPayment();
     final deadlinesThisWeek =
         _isLoading
             ? 0
@@ -278,35 +281,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 .map(
                   (client) => Card(
                     margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                        child: Icon(
-                          Icons.person,
-                          color: Theme.of(context).colorScheme.onSecondaryContainer,
-                        ),
-                      ),
-                      title: Text(client.name),
-                      subtitle: Text(client.project),
+                    color: _clientTypeColor(client).withOpacity(0.08),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
                       onTap: () => _openClientDetails(client),
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '€${client.budget.toStringAsFixed(0)}',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: _clientTypeColor(client),
+                              child: Text(
+                                _clientInitials(client.name),
+                                style: const TextStyle(
+                                  color: Colors.white,
                                   fontWeight: FontWeight.w600,
                                 ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _clientStageLabel(client.name),
-                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    client.name,
+                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: _clientTypeColor(client).withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      _clientContractType(client),
+                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                            color: _clientTypeColor(client),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  _formatCurrency(client.budget),
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                 ),
-                          ),
-                        ],
+                                const SizedBox(height: 4),
+                                Text(
+                                  _isRetainerClient(client) ? 'Salary' : 'Total',
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -416,6 +460,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 12),
           ...milestoneWidgets,
+          if (nextRetainerPayment != null) ...[
+            const SizedBox(height: 24),
+            Card(
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: const Color(0xFF6D9B7C),
+                      child: Text(
+                        _clientInitials(nextRetainerPayment.client),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nextRetainerPayment.client,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDate(nextRetainerPayment.date),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      'Salary: ${_formatCurrency(nextRetainerPayment.amount)}',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Payments',
@@ -676,6 +770,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _contactEmailController.clear();
     _contactTelegramController.clear();
     _selectedContractType = null;
+    _selectedRetainerPayDate = null;
+    _selectedRetainerFrequency = null;
 
     showDialog<void>(
       context: context,
@@ -740,13 +836,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _plannedBudgetController,
-                        decoration: const InputDecoration(
-                          labelText: 'Planned budget (€)',
+                        decoration: InputDecoration(
+                          labelText: _selectedContractType == 'Retainer'
+                              ? 'Retainer amount (€)'
+                              : 'Planned budget (€)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Enter a planned budget';
+                            return _selectedContractType == 'Retainer'
+                                ? 'Enter a retainer amount'
+                                : 'Enter a planned budget';
                           }
                           final parsed = double.tryParse(value.replaceAll(',', '.'));
                           if (parsed == null || parsed <= 0) {
@@ -755,6 +855,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           return null;
                         },
                       ),
+                      if (_selectedContractType == 'Retainer') ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _selectedRetainerFrequency,
+                          decoration: const InputDecoration(
+                            labelText: 'Payment frequency',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Monthly',
+                              child: Text('Monthly'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Twice a month',
+                              child: Text('Twice a month'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() {
+                              _selectedRetainerFrequency = value;
+                            });
+                          },
+                          validator: (value) {
+                            if (_selectedContractType != 'Retainer') {
+                              return null;
+                            }
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Enter a payment frequency';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Next payment date'),
+                          subtitle: Text(
+                            _selectedRetainerPayDate == null
+                                ? 'Select a date'
+                                : _formatDate(_selectedRetainerPayDate!),
+                          ),
+                          trailing: const Icon(Icons.calendar_today_outlined),
+                          onTap: () async {
+                            final now = DateTime.now();
+                            final picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: _selectedRetainerPayDate ?? now,
+                              firstDate: now,
+                              lastDate: DateTime(now.year + 5),
+                            );
+                            if (picked == null) {
+                              return;
+                            }
+                            setDialogState(() {
+                              _selectedRetainerPayDate = picked;
+                            });
+                          },
+                        ),
+                        if (_selectedRetainerPayDate == null) ...[
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Select a payment date',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
                       const SizedBox(height: 16),
                       const Divider(),
                       const SizedBox(height: 16),
@@ -804,6 +974,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       setDialogState(() {});
                       return;
                     }
+                    if (_selectedContractType == 'Retainer' &&
+                        (_selectedRetainerPayDate == null ||
+                            _selectedRetainerFrequency == null)) {
+                      setDialogState(() {});
+                      return;
+                    }
                     if (!isValid) {
                       return;
                     }
@@ -826,15 +1002,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final contactPhone = _contactPhoneController.text.trim();
     final contactEmail = _contactEmailController.text.trim();
     final contactTelegram = _contactTelegramController.text.trim();
+    final plannedBudget =
+        double.tryParse(_plannedBudgetController.text.trim().replaceAll(',', '.')) ?? 0;
     final projectSummary = _buildProjectSummary(
       contractType: contractType,
       contactName: contactName,
       contactPhone: contactPhone,
       contactEmail: contactEmail,
       contactTelegram: contactTelegram,
+      budget: plannedBudget,
+      retainerFrequency: _selectedRetainerFrequency ?? '',
+      retainerPayDate: _selectedRetainerPayDate,
     );
-    final plannedBudget =
-        double.tryParse(_plannedBudgetController.text.trim().replaceAll(',', '.')) ?? 0;
 
     setState(() {
       _clients.add(
@@ -846,6 +1025,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           deadline: DateTime.now().add(const Duration(days: 90)),
         ),
       );
+      if (contractType == 'Retainer' && _selectedRetainerPayDate != null) {
+        final retainerPayments = _buildRetainerPayments(
+          clientName: _clientNameController.text.trim(),
+          amount: plannedBudget,
+          frequency: _selectedRetainerFrequency ?? 'Monthly',
+          firstDate: _selectedRetainerPayDate!,
+        );
+        _payments.addAll(retainerPayments);
+      }
     });
     await _persistData();
     if (!mounted) {
@@ -860,6 +1048,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String contactPhone,
     required String contactEmail,
     required String contactTelegram,
+    required double budget,
+    required String retainerFrequency,
+    required DateTime? retainerPayDate,
   }) {
     final contactLine = _buildContactLine(
       contactName: contactName,
@@ -867,7 +1058,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       contactEmail: contactEmail,
       contactTelegram: contactTelegram,
     );
-    return '$contractType • $contactLine';
+    final summaryParts = <String>[
+      contractType,
+      if (contractType == 'Retainer')
+        '${_formatCurrency(budget)} • ${retainerFrequency.isEmpty ? 'Recurring' : retainerFrequency}'
+            '${retainerPayDate == null ? '' : ' • ${_formatDate(retainerPayDate)}'}',
+    ];
+    if (contactLine.isNotEmpty) {
+      summaryParts.add(contactLine);
+    }
+    return summaryParts.join(' • ');
   }
 
   String _buildContactLine({
@@ -882,7 +1082,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (contactTelegram.isNotEmpty) 'Telegram: $contactTelegram',
     ];
     if (contactName.isEmpty && details.isEmpty) {
-      return 'Contact TBD';
+      return '';
     }
     if (contactName.isEmpty) {
       return details.join(', ');
@@ -891,6 +1091,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return contactName;
     }
     return '$contactName (${details.join(', ')})';
+  }
+
+  bool _isRetainerClient(Client client) {
+    return client.project.toLowerCase().startsWith('retainer');
+  }
+
+  List<Client> _projectEligibleClients() {
+    return _clients.where((client) => !_isRetainerClient(client)).toList();
+  }
+
+  String _clientContractType(Client client) {
+    return _isRetainerClient(client) ? 'retainer' : 'project';
+  }
+
+  Color _clientTypeColor(Client client) {
+    return _isRetainerClient(client) ? const Color(0xFF6D9B7C) : const Color(0xFF2F9AB3);
+  }
+
+  String _clientInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) {
+      return '';
+    }
+    if (parts.length == 1) {
+      final word = parts.first;
+      return word.length >= 2 ? word.substring(0, 2).toUpperCase() : word.toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  List<Payment> _buildRetainerPayments({
+    required String clientName,
+    required double amount,
+    required String frequency,
+    required DateTime firstDate,
+  }) {
+    if (amount <= 0) {
+      return [];
+    }
+    if (frequency == 'Twice a month') {
+      return [
+        Payment(
+          client: clientName,
+          amount: amount / 2,
+          date: firstDate,
+          stage: 'Retainer',
+        ),
+        Payment(
+          client: clientName,
+          amount: amount / 2,
+          date: firstDate.add(const Duration(days: 15)),
+          stage: 'Retainer',
+        ),
+      ];
+    }
+    return [
+      Payment(
+        client: clientName,
+        amount: amount,
+        date: firstDate,
+        stage: 'Retainer',
+      ),
+    ];
+  }
+
+  Payment? _nextRetainerPayment() {
+    final now = DateTime.now();
+    final windowEnd = now.add(const Duration(days: 30));
+    final upcomingRetainers = _payments.where(
+      (payment) =>
+          payment.stage == 'Retainer' &&
+          !payment.date.isBefore(DateTime(now.year, now.month, now.day)) &&
+          !payment.date.isAfter(windowEnd),
+    );
+    if (upcomingRetainers.isEmpty) {
+      return null;
+    }
+    return upcomingRetainers.reduce(
+      (current, next) => next.date.isBefore(current.date) ? next : current,
+    );
   }
 
   void _showCreateMenu() {
@@ -919,6 +1199,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _showSnackBar(context, 'Create a client first');
                     return;
                   }
+                  if (_projectEligibleClients().isEmpty) {
+                    _showSnackBar(context, 'Retainer clients cannot have projects');
+                    return;
+                  }
                   _showProjectForm();
                 },
               ),
@@ -930,6 +1214,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showProjectForm() {
+    final eligibleClients = _projectEligibleClients();
+    if (eligibleClients.isEmpty) {
+      _showSnackBar(context, 'Retainer clients cannot have projects');
+      return;
+    }
     _projectNameController.clear();
     _projectAmountController.clear();
     _depositPercentController.clear();
@@ -962,7 +1251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Client',
                         ),
-                        items: _clients
+                        items: eligibleClients
                             .map(
                               (client) => DropdownMenuItem(
                                 value: client.name,
@@ -1340,6 +1629,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _showSnackBar(context, 'Select a client');
       return;
     }
+    final client = _clients.firstWhere((item) => item.name == clientName);
+    if (_isRetainerClient(client)) {
+      _showSnackBar(context, 'Retainer clients cannot have projects');
+      return;
+    }
     final amount =
         double.tryParse(_projectAmountController.text.trim().replaceAll(',', '.')) ?? 0;
     final stage = _selectedProjectStage ?? 'First meeting';
@@ -1379,6 +1673,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _projects.remove(project);
       _syncClientTotals(project.clientName);
+    });
+    await _persistData();
+  }
+
+  Future<void> _updateProject(Project oldProject, Project updatedProject) async {
+    setState(() {
+      final index = _projects.indexOf(oldProject);
+      if (index != -1) {
+        _projects[index] = updatedProject;
+      }
+      _syncClientTotals(updatedProject.clientName);
     });
     await _persistData();
   }
@@ -1442,6 +1747,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           payments: clientPayments,
           onDeleteClient: () => _deleteClient(client),
           onDuplicateProject: _duplicateProject,
+          onUpdateProject: _updateProject,
           onDeleteProject: _deleteProject,
         ),
       ),
@@ -1504,34 +1810,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const Color(0xFF7AA37C);
     }
   }
-
-  factory _Project.fromJson(Map<String, dynamic> json) {
-    return _Project(
-      clientName: json['clientName'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      amount: (json['amount'] as num?)?.toDouble() ?? 0,
-      stage: json['stage'] as String? ?? '',
-      nextStageDeadline:
-          DateTime.tryParse(json['nextStageDeadline'] as String? ?? '') ?? DateTime.now(),
-      depositPercent: (json['depositPercent'] as num?)?.toDouble(),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'clientName': clientName,
-      'name': name,
-      'amount': amount,
-      'stage': stage,
-      'nextStageDeadline': nextStageDeadline.toIso8601String(),
-      'depositPercent': depositPercent,
-    };
-  }
-
-  final String clientName;
-  final String name;
-  final double amount;
-  final String stage;
-  final double? depositPercent;
-  final DateTime nextStageDeadline;
 }
