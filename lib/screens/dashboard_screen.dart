@@ -319,6 +319,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           'Total for October',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 24),
+          SectionHeader(
+            title: 'Payments',
+            actionLabel: 'Add',
+            onActionPressed: () {
+              if (_clients.isEmpty) {
+                _showSnackBar(context, 'Create a client first');
+                return;
+              }
+              _showPaymentForm();
+            },
+          ),
+          const SizedBox(height: 12),
+          if (_isLoading)
+            _buildEmptyState('Loading payments...')
+          else if (_payments.isEmpty)
+            _buildEmptyState('Add payments to see updates here.')
+          else
+            Card(
+              child: Column(
+                children: [
+                  ..._payments.map(
+                    (payment) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        child: Icon(
+                          Icons.payments,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      title: Text(payment.client),
+                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                      trailing: Text(
+                        '€${payment.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                         Text(
                           _formatCurrency(
                             _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
@@ -327,7 +379,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
-                      ],
+                      ),
+                      title: Text(payment.client),
+                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                      trailing: Text(
+                        '€${payment.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                     ),
                   ),
                 ],
