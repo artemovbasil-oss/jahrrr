@@ -94,7 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final referenceDate = DateTime(2024, 10, 1);
     final activeProjects = _isLoading ? 0 : _projects.length;
-    final totalBudget =
+    final double totalBudget =
         _isLoading ? 0 : _clients.fold<double>(0, (sum, client) => sum + client.budget);
     final deadlinesThisWeek =
         _isLoading
@@ -102,7 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : _projects
                 .where((project) => _isWithinDays(referenceDate, project.nextStageDeadline, 7))
                 .length;
-    final upcomingPayments = _isLoading
+    final double upcomingPayments = _isLoading
         ? 0
         : _payments
             .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
@@ -320,6 +320,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 24),
+          SectionHeader(
+            title: 'Payments',
+            actionLabel: 'Add',
+            onActionPressed: () {
+              if (_clients.isEmpty) {
+                _showSnackBar(context, 'Create a client first');
+                return;
+              }
+              _showPaymentForm();
+            },
+          ),
+          const SizedBox(height: 12),
+          if (_isLoading)
+            _buildEmptyState('Loading payments...')
+          else if (_payments.isEmpty)
+            _buildEmptyState('Add payments to see updates here.')
+          else
+            Card(
+              child: Column(
+                children: [
+                  ..._payments.map(
+                    (payment) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        child: Icon(
+                          Icons.payments,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
                       title: Text(payment.client),
                       subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
                       trailing: Text(
@@ -344,7 +379,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
-                      ],
+                      ),
+                      title: Text(payment.client),
+                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                      trailing: Text(
+                        '€${payment.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                     ),
                   ),
                 ],
