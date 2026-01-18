@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/client.dart';
 import '../models/payment.dart';
@@ -11,6 +12,7 @@ class ClientDetailScreen extends StatefulWidget {
     required this.projects,
     required this.payments,
     required this.onDeleteClient,
+    required this.onUpdateClient,
     required this.onDuplicateProject,
     required this.onUpdateProject,
     required this.onDeleteProject,
@@ -20,6 +22,7 @@ class ClientDetailScreen extends StatefulWidget {
   final List<Project> projects;
   final List<Payment> payments;
   final Future<void> Function() onDeleteClient;
+  final Future<void> Function(Client updatedClient) onUpdateClient;
   final Future<Project> Function(Project project) onDuplicateProject;
   final Future<void> Function(Project oldProject, Project updatedProject) onUpdateProject;
   final Future<void> Function(Project project) onDeleteProject;
@@ -42,33 +45,61 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   late List<Project> _projects;
   late List<Payment> _payments;
+  late Client _client;
 
   @override
   void initState() {
     super.initState();
+    _client = widget.client;
     _projects = List<Project>.from(widget.projects);
     _payments = List<Payment>.from(widget.payments);
   }
 
   @override
   Widget build(BuildContext context) {
-    final paidStages = {'Deposit', 'Final payment'};
-    final upcomingPayments = _payments
-        .where((payment) => !paidStages.contains(payment.stage))
-        .toList();
+    final now = DateTime.now();
+    final normalizedNow = DateTime(now.year, now.month, now.day);
+    final computedPayments = _buildClientPayments(normalizedNow);
+    final upcomingPayments =
+        computedPayments.where((payment) => payment.date.isAfter(normalizedNow)).toList();
     final pastPayments =
-        _payments.where((payment) => paidStages.contains(payment.stage)).toList();
+        computedPayments.where((payment) => !payment.date.isAfter(normalizedNow)).toList();
+    final summaryParts =
+        _client.project.split(' • ').where((part) => part.trim().isNotEmpty).toList();
+    final contactInfo = _extractContactInfo(summaryParts);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.client.name),
-        actions: [
-          IconButton(
-            tooltip: 'Delete client',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: _confirmDeleteClient,
-          ),
-        ],
+        title: Text(_client.name),
+        actions: _isRetainerClient(_client)
+            ? [
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'edit-salary') {
+                      _editSalary();
+                    } else if (value == 'delete') {
+                      _confirmDeleteClient();
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'edit-salary',
+                      child: Text('Edit salary'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete client'),
+                    ),
+                  ],
+                ),
+              ]
+            : [
+                IconButton(
+                  tooltip: 'Delete client',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: _confirmDeleteClient,
+                ),
+              ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -76,35 +107,51 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           _InfoCard(
             title: 'Client details',
             children: [
-              _InfoRow(label: 'Name', value: widget.client.name),
-              _InfoRow(label: 'Status', value: widget.client.status),
-              _InfoRow(label: 'Budget', value: _formatCurrency(widget.client.budget)),
-              _InfoRow(label: 'Deadline', value: _formatDate(widget.client.deadline)),
-              _InfoRow(label: 'Summary', value: widget.client.project),
+              _InfoRow(label: 'Name', value: _client.name),
+              _InfoRow(label: 'Status', value: _client.status),
+              _InfoRow(
+                label: _isRetainerClient(_client) ? 'Salary' : 'Budget',
+                value: _formatCurrency(_client.budget),
+              ),
+              if (!_isRetainerClient(_client))
+                _InfoRow(label: 'Deadline', value: _formatDate(_client.deadline)),
+              _InfoChipsRow(label: 'Summary', chips: summaryParts),
+              if (contactInfo != null && contactInfo.name.isNotEmpty) ...[
+                _InfoRow(label: 'Contact', value: contactInfo.name),
+                ...contactInfo.details.entries.map(
+                  (entry) => _InfoLinkRow(
+                    label: entry.key,
+                    value: entry.value,
+                    onTap: () => _copyToClipboard(entry.value),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 20),
-          _InfoCard(
-            title: 'Projects',
-            children: _projects.isEmpty
-                ? [const Text('No projects yet.')]
-                : _projects
-                    .map(
-                      (project) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: _ProjectRow(
-                          project: project,
-                          onDuplicate: () => _duplicateProject(project),
-                          onUpdateStage: () => _updateProjectStage(project),
-                          onDelete: () => _deleteProject(project),
-                          formatCurrency: _formatCurrency,
-                          formatDate: _formatDate,
+          if (!_isRetainerClient(_client)) ...[
+            _InfoCard(
+              title: 'Projects',
+              children: _projects.isEmpty
+                  ? [const Text('No projects yet.')]
+                  : _projects
+                      .map(
+                        (project) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: _ProjectRow(
+                            project: project,
+                            onDuplicate: () => _duplicateProject(project),
+                            onUpdateStage: () => _updateProjectStage(project),
+                            onDelete: () => _deleteProject(project),
+                            formatCurrency: _formatCurrency,
+                            formatDate: _formatDate,
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
-          ),
-          const SizedBox(height: 20),
+                      )
+                      .toList(),
+            ),
+            const SizedBox(height: 20),
+          ],
           _InfoCard(
             title: 'Upcoming payments',
             children: upcomingPayments.isEmpty
@@ -153,6 +200,55 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       return;
     }
     Navigator.of(context).pop();
+  }
+
+  Future<void> _editSalary() async {
+    final salaryController = TextEditingController(text: _client.budget.toStringAsFixed(0));
+    final updated = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Edit salary'),
+        content: TextField(
+          controller: salaryController,
+          decoration: const InputDecoration(labelText: 'Salary (€)'),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed =
+                  double.tryParse(salaryController.text.trim().replaceAll(',', '.'));
+              if (parsed == null || parsed <= 0) {
+                return;
+              }
+              Navigator.of(dialogContext).pop(parsed);
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+    if (updated == null) {
+      return;
+    }
+    final updatedClient = Client(
+      name: _client.name,
+      project: _updateSummarySalary(_client.project, updated),
+      status: _client.status,
+      budget: updated,
+      deadline: _client.deadline,
+    );
+    await widget.onUpdateClient(updatedClient);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _client = updatedClient;
+    });
   }
 
   Future<void> _duplicateProject(Project project) async {
@@ -390,6 +486,84 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   String _formatCurrency(double amount) {
     return '€${amount.toStringAsFixed(0)}';
   }
+
+  bool _isRetainerClient(Client client) {
+    return client.project.toLowerCase().startsWith('retainer');
+  }
+
+  List<Payment> _buildClientPayments(DateTime now) {
+    final combined = List<Payment>.from(_payments);
+    for (final project in _projects) {
+      final depositAmount = _depositAmount(project);
+      if (depositAmount > 0) {
+        combined.add(
+          Payment(
+            client: project.clientName,
+            amount: depositAmount,
+            date: now,
+            stage: 'Deposit received',
+          ),
+        );
+      }
+    }
+    combined.sort((a, b) => a.date.compareTo(b.date));
+    return combined;
+  }
+
+  double _depositAmount(Project project) {
+    if (project.stage != 'Deposit received' || project.depositPercent == null) {
+      return 0;
+    }
+    return project.amount * (project.depositPercent! / 100);
+  }
+
+  _ContactInfo? _extractContactInfo(List<String> summaryParts) {
+    final contactPart = summaryParts.firstWhere(
+      (part) =>
+          part.contains('Phone:') || part.contains('Email:') || part.contains('Telegram:'),
+      orElse: () => '',
+    );
+    if (contactPart.isEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^(.*)\s*\((.*)\)$').firstMatch(contactPart);
+    final name = match?.group(1)?.trim() ?? '';
+    final detailsRaw = match?.group(2)?.trim() ?? contactPart;
+    final details = <String, String>{};
+    for (final segment in detailsRaw.split(',')) {
+      final trimmed = segment.trim();
+      if (trimmed.startsWith('Phone:')) {
+        details['Phone'] = trimmed.replaceFirst('Phone:', '').trim();
+      } else if (trimmed.startsWith('Email:')) {
+        details['Email'] = trimmed.replaceFirst('Email:', '').trim();
+      } else if (trimmed.startsWith('Telegram:')) {
+        details['Telegram'] = trimmed.replaceFirst('Telegram:', '').trim();
+      }
+    }
+    return _ContactInfo(name: name, details: details);
+  }
+
+  String _updateSummarySalary(String summary, double salary) {
+    final salaryLabel = _formatCurrency(salary);
+    return summary.replaceFirst(RegExp(r'€\d+'), salaryLabel);
+  }
+
+  Future<void> _copyToClipboard(String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied $value')),
+    );
+  }
+}
+
+class _ContactInfo {
+  const _ContactInfo({required this.name, required this.details});
+
+  final String name;
+  final Map<String, String> details;
 }
 
 class _InfoCard extends StatelessWidget {
@@ -447,6 +621,101 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChipsRow extends StatelessWidget {
+  const _InfoChipsRow({required this.label, required this.chips});
+
+  final String label;
+  final List<String> chips;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: chips
+                    .map(
+                      (chip) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Chip(
+                          label: Text(chip),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoLinkRow extends StatelessWidget {
+  const _InfoLinkRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  value,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
             ),
           ),
         ],
