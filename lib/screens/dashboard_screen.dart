@@ -43,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey<FormState> _paymentFormKey = GlobalKey<FormState>();
   final TextEditingController _clientNameController = TextEditingController();
   final TextEditingController _plannedBudgetController = TextEditingController();
+  final TextEditingController _retainerPeriodController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
   final TextEditingController _contactPhoneController = TextEditingController();
   final TextEditingController _contactEmailController = TextEditingController();
@@ -84,6 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scrollController.dispose();
     _clientNameController.dispose();
     _plannedBudgetController.dispose();
+    _retainerPeriodController.dispose();
     _contactNameController.dispose();
     _contactPhoneController.dispose();
     _contactEmailController.dispose();
@@ -765,6 +767,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showClientForm() {
     _clientNameController.clear();
     _plannedBudgetController.clear();
+    _retainerPeriodController.clear();
     _contactNameController.clear();
     _contactPhoneController.clear();
     _contactEmailController.clear();
