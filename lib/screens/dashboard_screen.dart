@@ -49,6 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _projectAmountController = TextEditingController();
   final TextEditingController _depositPercentController = TextEditingController();
   final TextEditingController _paymentAmountController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   String? _selectedProjectClient;
   String? _selectedProjectStage;
   DateTime? _selectedProjectDeadline;
@@ -58,6 +59,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final ScrollController _scrollController;
   bool _showMascot = false;
   bool _isLoading = true;
+  bool _isSearching = false;
+  String _searchQuery = '';
 
   final List<Client> _clients = [];
   final List<_Project> _projects = [];
@@ -85,6 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _projectAmountController.dispose();
     _depositPercentController.dispose();
     _paymentAmountController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -108,6 +112,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .where((payment) => _isWithinDays(referenceDate, payment.date, 7))
             .fold<double>(0, (sum, payment) => sum + payment.amount);
     final clientStatuses = _projectStages;
+    final normalizedQuery = _searchQuery.trim().toLowerCase();
+    final filteredProjects = normalizedQuery.isEmpty
+        ? _projects
+        : _projects
+            .where(
+              (project) =>
+                  project.name.toLowerCase().contains(normalizedQuery) ||
+                  project.clientName.toLowerCase().contains(normalizedQuery),
+            )
+            .toList();
     final visibleClients = _selectedClientStatus == null
         ? _clients
         : _clients
@@ -119,11 +133,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             )
             .toList();
+    final filteredClients = normalizedQuery.isEmpty
+        ? visibleClients
+        : visibleClients
+            .where(
+              (client) =>
+                  client.name.toLowerCase().contains(normalizedQuery) ||
+                  client.project.toLowerCase().contains(normalizedQuery),
+            )
+            .toList();
+    final filteredPayments = normalizedQuery.isEmpty
+        ? _payments
+        : _payments
+            .where(
+              (payment) =>
+                  payment.client.toLowerCase().contains(normalizedQuery) ||
+                  payment.stage.toLowerCase().contains(normalizedQuery),
+            )
+            .toList();
     final milestoneWidgets = _isLoading
         ? [_buildEmptyState('Loading milestones...')]
-        : _projects.isEmpty
+        : filteredProjects.isEmpty
             ? [_buildEmptyState('Add a project to track milestones.')]
-            : _projects
+            : filteredProjects
                 .map(
                   (project) => Card(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -183,13 +215,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 .toList();
     final paymentWidgets = _isLoading
         ? [_buildEmptyState('Loading payments...')]
-        : _payments.isEmpty
+        : filteredPayments.isEmpty
             ? [_buildEmptyState('Add payments to see updates here.')]
             : [
                 Card(
                   child: Column(
                     children: [
-                      ..._payments.map(
+                      ...filteredPayments.map(
                         (payment) => ListTile(
                           leading: CircleAvatar(
                             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
@@ -220,7 +252,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             Text(
                               _formatCurrency(
-                                _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
+                                filteredPayments.fold<double>(
+                                  0,
+                                  (sum, payment) => sum + payment.amount,
+                                ),
                               ),
                               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
@@ -235,9 +270,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ];
     final clientWidgets = _isLoading
         ? [_buildEmptyState('Loading clients...')]
-        : _clients.isEmpty
+        : filteredClients.isEmpty
             ? [_buildEmptyState('Add a client to get started.')]
-            : visibleClients
+            : filteredClients
                 .map(
                   (client) => Card(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -277,35 +312,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Hi Basil',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Search clients, projects, or payments',
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Hi Basil',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
-            ),
-            const SizedBox(height: 4),
-            FutureBuilder<PackageInfo>(
-              future: _packageInfoFuture,
-              builder: (context, snapshot) {
-                final version = snapshot.data?.version;
-                final subtitle = version == null ? 'Jahrrr' : 'Jahrrr v$version';
-                return Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                );
-              },
-            ),
-          ],
-        ),
+                  const SizedBox(height: 4),
+                  FutureBuilder<PackageInfo>(
+                    future: _packageInfoFuture,
+                    builder: (context, snapshot) {
+                      final version = snapshot.data?.version;
+                      final subtitle = version == null ? 'Jahrrr' : 'Jahrrr v$version';
+                      return Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      );
+                    },
+                  ),
+                ],
+              ),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search),
+            onPressed: _toggleSearch,
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
           ),
           IconButton(
             onPressed: () {},
@@ -432,6 +481,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchQuery = '';
+        _searchController.clear();
+      }
+    });
   }
 
   Future<void> _loadData() async {
