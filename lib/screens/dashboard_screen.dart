@@ -43,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey<FormState> _paymentFormKey = GlobalKey<FormState>();
   final TextEditingController _clientNameController = TextEditingController();
   final TextEditingController _plannedBudgetController = TextEditingController();
+  final TextEditingController _retainerPeriodController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
   final TextEditingController _contactPhoneController = TextEditingController();
   final TextEditingController _contactEmailController = TextEditingController();
@@ -55,6 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _selectedProjectClient;
   String? _selectedProjectStage;
   DateTime? _selectedProjectDeadline;
+  DateTime? _selectedRetainerPayDate;
   String? _selectedPaymentClient;
   String? _selectedPaymentStage;
   DateTime? _selectedPaymentDate;
@@ -82,6 +84,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scrollController.dispose();
     _clientNameController.dispose();
     _plannedBudgetController.dispose();
+    _retainerPeriodController.dispose();
     _contactNameController.dispose();
     _contactPhoneController.dispose();
     _contactEmailController.dispose();
@@ -671,11 +674,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showClientForm() {
     _clientNameController.clear();
     _plannedBudgetController.clear();
+    _retainerPeriodController.clear();
     _contactNameController.clear();
     _contactPhoneController.clear();
     _contactEmailController.clear();
     _contactTelegramController.clear();
     _selectedContractType = null;
+    _selectedRetainerPayDate = null;
 
     showDialog<void>(
       context: context,
@@ -740,13 +745,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _plannedBudgetController,
-                        decoration: const InputDecoration(
-                          labelText: 'Planned budget (€)',
+                        decoration: InputDecoration(
+                          labelText: _selectedContractType == 'Retainer'
+                              ? 'Retainer amount (€)'
+                              : 'Planned budget (€)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Enter a planned budget';
+                            return _selectedContractType == 'Retainer'
+                                ? 'Enter a retainer amount'
+                                : 'Enter a planned budget';
                           }
                           final parsed = double.tryParse(value.replaceAll(',', '.'));
                           if (parsed == null || parsed <= 0) {
@@ -755,6 +764,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           return null;
                         },
                       ),
+                      if (_selectedContractType == 'Retainer') ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _retainerPeriodController,
+                          decoration: const InputDecoration(
+                            labelText: 'Payment frequency',
+                            hintText: 'Monthly, biweekly, etc.',
+                          ),
+                          validator: (value) {
+                            if (_selectedContractType != 'Retainer') {
+                              return null;
+                            }
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Enter a payment frequency';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Next payment date'),
+                          subtitle: Text(
+                            _selectedRetainerPayDate == null
+                                ? 'Select a date'
+                                : _formatDate(_selectedRetainerPayDate!),
+                          ),
+                          trailing: const Icon(Icons.calendar_today_outlined),
+                          onTap: () async {
+                            final now = DateTime.now();
+                            final picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: _selectedRetainerPayDate ?? now,
+                              firstDate: now,
+                              lastDate: DateTime(now.year + 5),
+                            );
+                            if (picked == null) {
+                              return;
+                            }
+                            setDialogState(() {
+                              _selectedRetainerPayDate = picked;
+                            });
+                          },
+                        ),
+                        if (_selectedRetainerPayDate == null) ...[
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Select a payment date',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
                       const SizedBox(height: 16),
                       const Divider(),
                       const SizedBox(height: 16),
@@ -804,6 +869,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       setDialogState(() {});
                       return;
                     }
+                    if (_selectedContractType == 'Retainer' && _selectedRetainerPayDate == null) {
+                      setDialogState(() {});
+                      return;
+                    }
                     if (!isValid) {
                       return;
                     }
@@ -832,6 +901,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       contactPhone: contactPhone,
       contactEmail: contactEmail,
       contactTelegram: contactTelegram,
+      budget: double.tryParse(_plannedBudgetController.text.trim().replaceAll(',', '.')) ?? 0,
+      retainerFrequency: _retainerPeriodController.text.trim(),
+      retainerPayDate: _selectedRetainerPayDate,
     );
     final plannedBudget =
         double.tryParse(_plannedBudgetController.text.trim().replaceAll(',', '.')) ?? 0;
@@ -860,6 +932,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String contactPhone,
     required String contactEmail,
     required String contactTelegram,
+    required double budget,
+    required String retainerFrequency,
+    required DateTime? retainerPayDate,
   }) {
     final contactLine = _buildContactLine(
       contactName: contactName,
@@ -867,7 +942,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       contactEmail: contactEmail,
       contactTelegram: contactTelegram,
     );
-    return '$contractType • $contactLine';
+    final summaryParts = <String>[
+      contractType,
+      if (contractType == 'Retainer')
+        '${_formatCurrency(budget)} • ${retainerFrequency.isEmpty ? 'Recurring' : retainerFrequency}'
+            '${retainerPayDate == null ? '' : ' • ${_formatDate(retainerPayDate)}'}',
+    ];
+    if (contactLine.isNotEmpty) {
+      summaryParts.add(contactLine);
+    }
+    return summaryParts.join(' • ');
   }
 
   String _buildContactLine({
@@ -882,7 +966,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (contactTelegram.isNotEmpty) 'Telegram: $contactTelegram',
     ];
     if (contactName.isEmpty && details.isEmpty) {
-      return 'Contact TBD';
+      return '';
     }
     if (contactName.isEmpty) {
       return details.join(', ');
@@ -891,6 +975,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return contactName;
     }
     return '$contactName (${details.join(', ')})';
+  }
+
+  bool _isRetainerClient(Client client) {
+    return client.project.toLowerCase().startsWith('retainer');
+  }
+
+  List<Client> _projectEligibleClients() {
+    return _clients.where((client) => !_isRetainerClient(client)).toList();
   }
 
   void _showCreateMenu() {
@@ -919,6 +1011,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _showSnackBar(context, 'Create a client first');
                     return;
                   }
+                  if (_projectEligibleClients().isEmpty) {
+                    _showSnackBar(context, 'Retainer clients cannot have projects');
+                    return;
+                  }
                   _showProjectForm();
                 },
               ),
@@ -930,6 +1026,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showProjectForm() {
+    final eligibleClients = _projectEligibleClients();
+    if (eligibleClients.isEmpty) {
+      _showSnackBar(context, 'Retainer clients cannot have projects');
+      return;
+    }
     _projectNameController.clear();
     _projectAmountController.clear();
     _depositPercentController.clear();
@@ -962,7 +1063,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Client',
                         ),
-                        items: _clients
+                        items: eligibleClients
                             .map(
                               (client) => DropdownMenuItem(
                                 value: client.name,
@@ -1340,6 +1441,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _showSnackBar(context, 'Select a client');
       return;
     }
+    final client = _clients.firstWhere((item) => item.name == clientName);
+    if (_isRetainerClient(client)) {
+      _showSnackBar(context, 'Retainer clients cannot have projects');
+      return;
+    }
     final amount =
         double.tryParse(_projectAmountController.text.trim().replaceAll(',', '.')) ?? 0;
     final stage = _selectedProjectStage ?? 'First meeting';
@@ -1379,6 +1485,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _projects.remove(project);
       _syncClientTotals(project.clientName);
+    });
+    await _persistData();
+  }
+
+  Future<void> _updateProject(Project oldProject, Project updatedProject) async {
+    setState(() {
+      final index = _projects.indexOf(oldProject);
+      if (index != -1) {
+        _projects[index] = updatedProject;
+      }
+      _syncClientTotals(updatedProject.clientName);
     });
     await _persistData();
   }
@@ -1442,6 +1559,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           payments: clientPayments,
           onDeleteClient: () => _deleteClient(client),
           onDuplicateProject: _duplicateProject,
+          onUpdateProject: _updateProject,
           onDeleteProject: _deleteProject,
         ),
       ),
@@ -1504,34 +1622,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const Color(0xFF7AA37C);
     }
   }
-
-  factory _Project.fromJson(Map<String, dynamic> json) {
-    return _Project(
-      clientName: json['clientName'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      amount: (json['amount'] as num?)?.toDouble() ?? 0,
-      stage: json['stage'] as String? ?? '',
-      nextStageDeadline:
-          DateTime.tryParse(json['nextStageDeadline'] as String? ?? '') ?? DateTime.now(),
-      depositPercent: (json['depositPercent'] as num?)?.toDouble(),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'clientName': clientName,
-      'name': name,
-      'amount': amount,
-      'stage': stage,
-      'nextStageDeadline': nextStageDeadline.toIso8601String(),
-      'depositPercent': depositPercent,
-    };
-  }
-
-  final String clientName;
-  final String name;
-  final double amount;
-  final String stage;
-  final double? depositPercent;
-  final DateTime nextStageDeadline;
 }
