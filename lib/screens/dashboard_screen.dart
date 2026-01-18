@@ -27,12 +27,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Project on hold',
     'Payment received in full',
   ];
+  static const List<String> _paymentStages = [
+    'Deposit',
+    'Milestone',
+    'Final payment',
+  ];
 
   String? _selectedClientStatus;
   String? _selectedContractType;
   late final Future<PackageInfo> _packageInfoFuture;
   final GlobalKey<FormState> _clientFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _projectFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _paymentFormKey = GlobalKey<FormState>();
   final TextEditingController _clientNameController = TextEditingController();
   final TextEditingController _plannedBudgetController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
@@ -42,9 +48,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _projectNameController = TextEditingController();
   final TextEditingController _projectAmountController = TextEditingController();
   final TextEditingController _depositPercentController = TextEditingController();
+  final TextEditingController _paymentAmountController = TextEditingController();
   String? _selectedProjectClient;
   String? _selectedProjectStage;
   DateTime? _selectedProjectDeadline;
+  String? _selectedPaymentClient;
+  String? _selectedPaymentStage;
+  DateTime? _selectedPaymentDate;
   late final ScrollController _scrollController;
   bool _showMascot = false;
   bool _isLoading = true;
@@ -74,6 +84,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _projectNameController.dispose();
     _projectAmountController.dispose();
     _depositPercentController.dispose();
+    _paymentAmountController.dispose();
     super.dispose();
   }
 
@@ -261,8 +272,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Payments',
-            actionLabel: 'Export',
-            onActionPressed: () => _showSnackBar(context, 'Exporting payments'),
+            actionLabel: 'Add',
+            onActionPressed: () {
+              if (_clients.isEmpty) {
+                _showSnackBar(context, 'Create a client first');
+                return;
+              }
+              _showPaymentForm();
+            },
           ),
           const SizedBox(height: 12),
           if (_isLoading)
@@ -302,6 +319,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           'Total for October',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
+                      ),
+                      title: Text(payment.client),
+                      subtitle: Text('${payment.stage} • ${_formatDate(payment.date)}'),
+                      trailing: Text(
+                        '€${payment.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                         Text(
                           _formatCurrency(
                             _payments.fold<double>(0, (sum, payment) => sum + payment.amount),
@@ -416,6 +450,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final prefs = await SharedPreferences.getInstance();
       final clientsData = prefs.getString('clients');
       final projectsData = prefs.getString('projects');
+      final paymentsData = prefs.getString('payments');
       if (clientsData != null) {
         final decoded = jsonDecode(clientsData) as List<dynamic>;
         _clients
@@ -436,9 +471,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 .map(_Project.fromJson),
           );
       }
+      if (paymentsData != null) {
+        final decoded = jsonDecode(paymentsData) as List<dynamic>;
+        _payments
+          ..clear()
+          ..addAll(
+            decoded
+                .whereType<Map<String, dynamic>>()
+                .map(Payment.fromJson),
+          );
+      }
     } catch (_) {
       _clients.clear();
       _projects.clear();
+      _payments.clear();
     } finally {
       if (!mounted) {
         return;
@@ -458,6 +504,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await prefs.setString(
       'projects',
       jsonEncode(_projects.map((project) => project.toJson()).toList()),
+    );
+    await prefs.setString(
+      'payments',
+      jsonEncode(_payments.map((payment) => payment.toJson()).toList()),
     );
   }
 
@@ -1046,6 +1096,191 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       },
     );
+  }
+
+  void _showPaymentForm() {
+    _paymentAmountController.clear();
+    _selectedPaymentClient = null;
+    _selectedPaymentStage = null;
+    _selectedPaymentDate = null;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('New payment'),
+              content: Form(
+                key: _paymentFormKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: _selectedPaymentClient,
+                        decoration: const InputDecoration(
+                          labelText: 'Client',
+                        ),
+                        items: _clients
+                            .map(
+                              (client) => DropdownMenuItem(
+                                value: client.name,
+                                child: Text(client.name),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            _selectedPaymentClient = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Select a client';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _paymentAmountController,
+                        decoration: const InputDecoration(
+                          labelText: 'Payment amount (€)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a payment amount';
+                          }
+                          final parsed = double.tryParse(value.replaceAll(',', '.'));
+                          if (parsed == null || parsed <= 0) {
+                            return 'Enter a valid amount';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _selectedPaymentStage,
+                        decoration: const InputDecoration(
+                          labelText: 'Payment stage',
+                        ),
+                        items: _paymentStages
+                            .map(
+                              (stage) => DropdownMenuItem(
+                                value: stage,
+                                child: Text(stage),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            _selectedPaymentStage = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Select a payment stage';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Payment date'),
+                        subtitle: Text(
+                          _selectedPaymentDate == null
+                              ? 'Select a date'
+                              : _formatDate(_selectedPaymentDate!),
+                        ),
+                        trailing: const Icon(Icons.calendar_today_outlined),
+                        onTap: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: _selectedPaymentDate ?? now,
+                            firstDate: DateTime(now.year - 5),
+                            lastDate: DateTime(now.year + 5),
+                          );
+                          if (picked == null) {
+                            return;
+                          }
+                          setDialogState(() {
+                            _selectedPaymentDate = picked;
+                          });
+                        },
+                      ),
+                      if (_selectedPaymentDate == null) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Select a payment date',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final isValid = _paymentFormKey.currentState?.validate() ?? false;
+                    if (_selectedPaymentDate == null) {
+                      setDialogState(() {});
+                      return;
+                    }
+                    if (!isValid) {
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop();
+                    _addPayment();
+                  },
+                  child: const Text('Add payment'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _addPayment() async {
+    final clientName = _selectedPaymentClient;
+    if (clientName == null) {
+      _showSnackBar(context, 'Select a client');
+      return;
+    }
+    final amount =
+        double.tryParse(_paymentAmountController.text.trim().replaceAll(',', '.')) ?? 0;
+    final stage = _selectedPaymentStage ?? _paymentStages.first;
+    final date = _selectedPaymentDate ?? DateTime.now();
+
+    setState(() {
+      _payments.add(
+        Payment(
+          client: clientName,
+          amount: amount,
+          date: date,
+          stage: stage,
+        ),
+      );
+    });
+    await _persistData();
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar(context, 'Payment added');
   }
 
   Future<void> _addProject() async {
