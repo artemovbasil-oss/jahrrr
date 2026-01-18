@@ -274,11 +274,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ];
+              ),
+            ];
+    final upcomingRetainerPayment = _nextRetainerPayment(DateTime.now());
     final clientWidgets = _isLoading
         ? [_buildEmptyState('Loading clients...')]
         : filteredClients.isEmpty
@@ -413,6 +414,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           const SizedBox(height: 12),
+          if (upcomingRetainerPayment != null) ...[
+            _UpcomingRetainerPaymentCard(
+              payment: upcomingRetainerPayment,
+              formattedAmount: _formatCurrency(upcomingRetainerPayment.amount),
+              formattedDate: _formatDate(upcomingRetainerPayment.date),
+            ),
+            const SizedBox(height: 12),
+          ],
           ...paymentWidgets,
           const SizedBox(height: 24),
           SectionHeader(
