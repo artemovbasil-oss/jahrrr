@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/client.dart';
-import '../models/payment.dart';
 import '../models/project.dart';
+import '../models/project_payment.dart';
+import '../models/retainer_settings.dart';
 
 class ClientDetailScreen extends StatefulWidget {
   const ClientDetailScreen({
@@ -13,6 +14,8 @@ class ClientDetailScreen extends StatefulWidget {
     required this.payments,
     required this.onDeleteClient,
     required this.onUpdateClient,
+    required this.onUpdatePayment,
+    required this.onDeletePayment,
     required this.onDuplicateProject,
     required this.onUpdateProject,
     required this.onDeleteProject,
@@ -20,9 +23,12 @@ class ClientDetailScreen extends StatefulWidget {
 
   final Client client;
   final List<Project> projects;
-  final List<Payment> payments;
+  final List<ProjectPayment> payments;
   final Future<void> Function() onDeleteClient;
   final Future<void> Function(Client updatedClient) onUpdateClient;
+  final Future<void> Function(ProjectPayment oldPayment, ProjectPayment updatedPayment)
+      onUpdatePayment;
+  final Future<void> Function(ProjectPayment payment) onDeletePayment;
   final Future<Project> Function(Project project) onDuplicateProject;
   final Future<void> Function(Project oldProject, Project updatedProject) onUpdateProject;
   final Future<void> Function(Project project) onDeleteProject;
@@ -32,19 +38,19 @@ class ClientDetailScreen extends StatefulWidget {
 }
 
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
-  static const List<String> _projectStages = [
-    'First meeting',
-    'Deposit received',
-    'In progress',
-    'Awaiting feedback',
-    'Returned for revision',
-    'Renegotiating budget',
-    'Project on hold',
-    'Payment received in full',
-  ];
+  static const Map<String, String> _projectStageLabels = {
+    'first_meeting': 'First meeting',
+    'deposit_received': 'Deposit received',
+    'in_progress': 'In progress',
+    'awaiting_feedback': 'Awaiting feedback',
+    'returned_for_revision': 'Returned for revision',
+    'renegotiating_budget': 'Renegotiating budget',
+    'project_on_hold': 'Project on hold',
+    'payment_received_in_full': 'Payment received in full',
+  };
 
   late List<Project> _projects;
-  late List<Payment> _payments;
+  late List<ProjectPayment> _payments;
   late Client _client;
 
   @override
@@ -52,7 +58,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     super.initState();
     _client = widget.client;
     _projects = List<Project>.from(widget.projects);
-    _payments = List<Payment>.from(widget.payments);
+    _payments = List<ProjectPayment>.from(widget.payments);
   }
 
   @override
@@ -64,9 +70,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         computedPayments.where((payment) => payment.date.isAfter(normalizedNow)).toList();
     final pastPayments =
         computedPayments.where((payment) => !payment.date.isAfter(normalizedNow)).toList();
-    final summaryParts =
-        _client.project.split(' • ').where((part) => part.trim().isNotEmpty).toList();
-    final contactInfo = _extractContactInfo(summaryParts);
+    final summaryParts = _buildSummaryChips();
 
     return Scaffold(
       appBar: AppBar(
@@ -108,24 +112,43 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             title: 'Client details',
             children: [
               _InfoRow(label: 'Name', value: _client.name),
-              _InfoRow(label: 'Status', value: _client.status),
               _InfoRow(
-                label: _isRetainerClient(_client) ? 'Salary' : 'Budget',
-                value: _formatCurrency(_client.budget),
+                label: 'Type',
+                value: _isRetainerClient(_client) ? 'Retainer' : 'Project',
               ),
-              if (!_isRetainerClient(_client))
-                _InfoRow(label: 'Deadline', value: _formatDate(_client.deadline)),
-              _InfoChipsRow(label: 'Summary', chips: summaryParts),
-              if (contactInfo != null && contactInfo.name.isNotEmpty) ...[
-                _InfoRow(label: 'Contact', value: contactInfo.name),
-                ...contactInfo.details.entries.map(
-                  (entry) => _InfoLinkRow(
-                    label: entry.key,
-                    value: entry.value,
-                    onTap: () => _copyToClipboard(entry.value),
-                  ),
+              _InfoRow(label: 'Currency', value: _client.currency),
+              if (_isRetainerClient(_client))
+                _InfoRow(
+                  label: 'Retainer amount',
+                  value: _formatCurrency(_client.retainerSettings?.amount ?? 0),
                 ),
-              ],
+              if (!_isRetainerClient(_client))
+                _InfoRow(
+                  label: 'Planned budget',
+                  value: _formatCurrency(_client.plannedBudget ?? 0),
+                ),
+              if (summaryParts.isNotEmpty)
+                _InfoChipsRow(label: 'Summary', chips: summaryParts),
+              if (_client.contactPerson != null && _client.contactPerson!.isNotEmpty)
+                _InfoRow(label: 'Contact', value: _client.contactPerson!),
+              if (_client.phone != null && _client.phone!.isNotEmpty)
+                _InfoLinkRow(
+                  label: 'Phone',
+                  value: _client.phone!,
+                  onTap: () => _copyToClipboard(_client.phone!),
+                ),
+              if (_client.email != null && _client.email!.isNotEmpty)
+                _InfoLinkRow(
+                  label: 'Email',
+                  value: _client.email!,
+                  onTap: () => _copyToClipboard(_client.email!),
+                ),
+              if (_client.telegram != null && _client.telegram!.isNotEmpty)
+                _InfoLinkRow(
+                  label: 'Telegram',
+                  value: _client.telegram!,
+                  onTap: () => _copyToClipboard(_client.telegram!),
+                ),
             ],
           ),
           const SizedBox(height: 20),
@@ -143,8 +166,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                             onDuplicate: () => _duplicateProject(project),
                             onUpdateStage: () => _updateProjectStage(project),
                             onDelete: () => _deleteProject(project),
-                            formatCurrency: _formatCurrency,
                             formatDate: _formatDate,
+                            stageLabel:
+                                _projectStageLabels[project.status] ?? project.status,
                           ),
                         ),
                       )
@@ -157,7 +181,22 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             children: upcomingPayments.isEmpty
                 ? [const Text('No upcoming payments.')]
                 : upcomingPayments
-                    .map((payment) => _PaymentRow(payment: payment))
+                    .map(
+                      (payment) => _PaymentRow(
+                        payment: payment,
+                        formatDate: _formatDate,
+                        onEdit: payment.sourcePayment == null
+                            ? null
+                            : () => _editPayment(payment.sourcePayment!),
+                        onDelete: payment.sourcePayment == null
+                            ? null
+                            : () => _deletePayment(payment.sourcePayment!),
+                        onMarkPaid:
+                            payment.sourcePayment?.status == 'planned'
+                                ? () => _markPaymentAsPaid(payment.sourcePayment!)
+                                : null,
+                      ),
+                    )
                     .toList(),
           ),
           const SizedBox(height: 20),
@@ -166,7 +205,18 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             children: pastPayments.isEmpty
                 ? [const Text('No payment history yet.')]
                 : pastPayments
-                    .map((payment) => _PaymentRow(payment: payment))
+                    .map(
+                      (payment) => _PaymentRow(
+                        payment: payment,
+                        formatDate: _formatDate,
+                        onEdit: payment.sourcePayment == null
+                            ? null
+                            : () => _editPayment(payment.sourcePayment!),
+                        onDelete: payment.sourcePayment == null
+                            ? null
+                            : () => _deletePayment(payment.sourcePayment!),
+                      ),
+                    )
                     .toList(),
           ),
         ],
@@ -179,7 +229,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete client'),
-        content: const Text('This will remove the client and all related projects and payments.'),
+        content: const Text('This will archive the client and hide its projects and payments.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -203,7 +253,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Future<void> _editSalary() async {
-    final salaryController = TextEditingController(text: _client.budget.toStringAsFixed(0));
+    final currentAmount = _client.retainerSettings?.amount ?? 0;
+    final salaryController = TextEditingController(text: currentAmount.toStringAsFixed(0));
     final updated = await showDialog<double>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -235,12 +286,29 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     if (updated == null) {
       return;
     }
+    final updatedSettings = _client.retainerSettings == null
+        ? null
+        : RetainerSettings(
+            amount: updated,
+            frequency: _client.retainerSettings!.frequency,
+            nextPaymentDate: _client.retainerSettings!.nextPaymentDate,
+            isEnabled: _client.retainerSettings!.isEnabled,
+            updatedAt: DateTime.now(),
+          );
     final updatedClient = Client(
+      id: _client.id,
       name: _client.name,
-      project: _updateSummarySalary(_client.project, updated),
-      status: _client.status,
-      budget: updated,
-      deadline: _client.deadline,
+      type: _client.type,
+      contactPerson: _client.contactPerson,
+      phone: _client.phone,
+      email: _client.email,
+      telegram: _client.telegram,
+      plannedBudget: _client.plannedBudget,
+      currency: _client.currency,
+      isArchived: _client.isArchived,
+      createdAt: _client.createdAt,
+      updatedAt: DateTime.now(),
+      retainerSettings: updatedSettings,
     );
     await widget.onUpdateClient(updatedClient);
     if (!mounted) {
@@ -272,14 +340,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Future<void> _updateProjectStage(Project project) async {
-    final depositController = TextEditingController(
-      text: project.depositPercent?.toStringAsFixed(0) ?? '',
-    );
-    final budgetController = TextEditingController(
-      text: project.amount.toStringAsFixed(0),
-    );
-    var selectedStage = project.stage;
-    DateTime? selectedDeadline = project.nextStageDeadline;
+    var selectedStage = project.status;
+    DateTime? selectedDeadline = project.deadlineDate;
     var showErrors = false;
 
     final shouldUpdate = await showDialog<bool>(
@@ -298,11 +360,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Stage',
                       ),
-                      items: _projectStages
+                      items: _projectStageLabels.entries
                           .map(
-                            (stage) => DropdownMenuItem(
-                              value: stage,
-                              child: Text(stage),
+                            (entry) => DropdownMenuItem(
+                              value: entry.key,
+                              child: Text(entry.value),
                             ),
                           )
                           .toList(),
@@ -321,91 +383,32 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                             ),
                       ),
                     ],
-                    if (selectedStage == 'Renegotiating budget') ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: budgetController,
-                        decoration: const InputDecoration(
-                          labelText: 'New budget (€)',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Deadline (optional)'),
+                      subtitle: Text(
+                        selectedDeadline == null
+                            ? 'Select a date'
+                            : _formatDate(selectedDeadline!),
                       ),
-                      if (showErrors &&
-                          (double.tryParse(
-                                budgetController.text.trim().replaceAll(',', '.'),
-                              ) ==
-                              null)) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Enter a valid budget',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                        ),
-                      ],
-                    ],
-                    if (selectedStage == 'Deposit received') ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: depositController,
-                        decoration: const InputDecoration(
-                          labelText: 'Deposit percent (%)',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      ),
-                      if (showErrors &&
-                          (double.tryParse(
-                                depositController.text.trim().replaceAll(',', '.'),
-                              ) ==
-                              null)) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Enter a valid percent',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                        ),
-                      ],
-                    ],
-                    if (selectedStage != 'Payment received in full') ...[
-                      const SizedBox(height: 12),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Deadline to next stage'),
-                        subtitle: Text(
-                          selectedDeadline == null
-                              ? 'Select a date'
-                              : _formatDate(selectedDeadline!),
-                        ),
-                        trailing: const Icon(Icons.calendar_today_outlined),
-                        onTap: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: dialogContext,
-                            initialDate: selectedDeadline ?? now,
-                            firstDate: now,
-                            lastDate: DateTime(now.year + 5),
-                          );
-                          if (picked == null) {
-                            return;
-                          }
-                          setDialogState(() {
-                            selectedDeadline = picked;
-                          });
-                        },
-                      ),
-                      if (showErrors && selectedDeadline == null) ...[
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Select a deadline',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                          ),
-                        ),
-                      ],
-                    ],
+                      trailing: const Icon(Icons.calendar_today_outlined),
+                      onTap: () async {
+                        final now = DateTime.now();
+                        final picked = await showDatePicker(
+                          context: dialogContext,
+                          initialDate: selectedDeadline ?? now,
+                          firstDate: now,
+                          lastDate: DateTime(now.year + 5),
+                        );
+                        if (picked == null) {
+                          return;
+                        }
+                        setDialogState(() {
+                          selectedDeadline = picked;
+                        });
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -416,19 +419,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    final depositValue = double.tryParse(
-                      depositController.text.trim().replaceAll(',', '.'),
-                    );
-                    final budgetValue = double.tryParse(
-                      budgetController.text.trim().replaceAll(',', '.'),
-                    );
-                    final hasDeadline =
-                        selectedStage == 'Payment received in full' || selectedDeadline != null;
-                    final hasValidDeposit =
-                        selectedStage != 'Deposit received' || depositValue != null;
-                    final hasValidBudget =
-                        selectedStage != 'Renegotiating budget' || budgetValue != null;
-                    if (selectedStage.isEmpty || !hasDeadline || !hasValidDeposit || !hasValidBudget) {
+                    if (selectedStage.isEmpty) {
                       setDialogState(() {
                         showErrors = true;
                       });
@@ -449,22 +440,15 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       return;
     }
 
-    final updatedAmount = selectedStage == 'Renegotiating budget'
-        ? double.tryParse(budgetController.text.trim().replaceAll(',', '.')) ??
-            project.amount
-        : project.amount;
-    final updatedDeposit = selectedStage == 'Deposit received'
-        ? double.tryParse(depositController.text.trim().replaceAll(',', '.'))
-        : null;
+    final now = DateTime.now();
     final updatedProject = Project(
-      clientName: project.clientName,
-      name: project.name,
-      amount: updatedAmount,
-      stage: selectedStage,
-      depositPercent: updatedDeposit,
-      nextStageDeadline: selectedStage == 'Payment received in full'
-          ? project.nextStageDeadline
-          : selectedDeadline ?? project.nextStageDeadline,
+      id: project.id,
+      clientId: project.clientId,
+      title: project.title,
+      status: selectedStage,
+      deadlineDate: selectedDeadline,
+      createdAt: project.createdAt,
+      updatedAt: now,
     );
 
     await widget.onUpdateProject(project, updatedProject);
@@ -479,6 +463,247 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     });
   }
 
+  Future<void> _markPaymentAsPaid(ProjectPayment payment) async {
+    final now = DateTime.now();
+    final updated = ProjectPayment(
+      id: payment.id,
+      projectId: payment.projectId,
+      amount: payment.amount,
+      kind: payment.kind,
+      status: 'paid',
+      dueDate: payment.dueDate,
+      paidDate: payment.paidDate ?? now,
+      createdAt: payment.createdAt,
+      updatedAt: now,
+    );
+    await widget.onUpdatePayment(payment, updated);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      final index = _payments.indexOf(payment);
+      if (index != -1) {
+        _payments[index] = updated;
+      }
+    });
+  }
+
+  Future<void> _editPayment(ProjectPayment payment) async {
+    final amountController =
+        TextEditingController(text: payment.amount.toStringAsFixed(0));
+    var selectedKind = payment.kind;
+    var selectedStatus = payment.status;
+    DateTime? selectedDueDate = payment.dueDate;
+    DateTime? selectedPaidDate = payment.paidDate;
+    var showErrors = false;
+
+    final shouldUpdate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit payment'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: amountController,
+                      decoration: const InputDecoration(
+                        labelText: 'Amount (€)',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    if (showErrors &&
+                        (double.tryParse(amountController.text.trim().replaceAll(',', '.')) ==
+                            null)) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Enter a valid amount',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: selectedKind,
+                      decoration: const InputDecoration(
+                        labelText: 'Kind',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'deposit', child: Text('Deposit')),
+                        DropdownMenuItem(value: 'milestone', child: Text('Milestone')),
+                        DropdownMenuItem(value: 'final', child: Text('Final payment')),
+                        DropdownMenuItem(value: 'other', child: Text('Other')),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedKind = value ?? selectedKind;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: selectedStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'planned', child: Text('Planned')),
+                        DropdownMenuItem(value: 'paid', child: Text('Paid')),
+                      ],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedStatus = value ?? selectedStatus;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Due date (optional)'),
+                      subtitle: Text(
+                        selectedDueDate == null
+                            ? 'Select a date'
+                            : _formatDate(selectedDueDate!),
+                      ),
+                      trailing: const Icon(Icons.calendar_today_outlined),
+                      onTap: () async {
+                        final now = DateTime.now();
+                        final picked = await showDatePicker(
+                          context: dialogContext,
+                          initialDate: selectedDueDate ?? now,
+                          firstDate: DateTime(now.year - 5),
+                          lastDate: DateTime(now.year + 5),
+                        );
+                        if (picked == null) {
+                          return;
+                        }
+                        setDialogState(() {
+                          selectedDueDate = picked;
+                        });
+                      },
+                    ),
+                    if (selectedStatus == 'paid') ...[
+                      const SizedBox(height: 12),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Paid date'),
+                        subtitle: Text(
+                          selectedPaidDate == null
+                              ? 'Select a date'
+                              : _formatDate(selectedPaidDate!),
+                        ),
+                        trailing: const Icon(Icons.calendar_today_outlined),
+                        onTap: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: selectedPaidDate ?? now,
+                            firstDate: DateTime(now.year - 5),
+                            lastDate: DateTime(now.year + 5),
+                          );
+                          if (picked == null) {
+                            return;
+                          }
+                          setDialogState(() {
+                            selectedPaidDate = picked;
+                          });
+                        },
+                      ),
+                      if (showErrors && selectedPaidDate == null) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Select a paid date',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final amount = double.tryParse(
+                      amountController.text.trim().replaceAll(',', '.'),
+                    );
+                    if (amount == null || amount <= 0) {
+                      setDialogState(() {
+                        showErrors = true;
+                      });
+                      return;
+                    }
+                    if (selectedStatus == 'paid' && selectedPaidDate == null) {
+                      setDialogState(() {
+                        showErrors = true;
+                      });
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  child: const Text('Update'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldUpdate != true) {
+      return;
+    }
+    final updatedAmount =
+        double.tryParse(amountController.text.trim().replaceAll(',', '.')) ??
+            payment.amount;
+    final now = DateTime.now();
+    final updated = ProjectPayment(
+      id: payment.id,
+      projectId: payment.projectId,
+      amount: updatedAmount,
+      kind: selectedKind,
+      status: selectedStatus,
+      dueDate: selectedDueDate,
+      paidDate: selectedStatus == 'paid' ? (selectedPaidDate ?? now) : null,
+      createdAt: payment.createdAt,
+      updatedAt: now,
+    );
+    await widget.onUpdatePayment(payment, updated);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      final index = _payments.indexOf(payment);
+      if (index != -1) {
+        _payments[index] = updated;
+      }
+    });
+  }
+
+  Future<void> _deletePayment(ProjectPayment payment) async {
+    await widget.onDeletePayment(payment);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _payments.remove(payment);
+    });
+  }
+
   String _formatDate(DateTime date) {
     return '${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
   }
@@ -488,64 +713,131 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   bool _isRetainerClient(Client client) {
-    return client.project.toLowerCase().startsWith('retainer');
+    return client.type == 'retainer';
   }
 
-  List<Payment> _buildClientPayments(DateTime now) {
-    final combined = List<Payment>.from(_payments);
-    for (final project in _projects) {
-      final depositAmount = _depositAmount(project);
-      if (depositAmount > 0) {
-        combined.add(
-          Payment(
-            client: project.clientName,
-            amount: depositAmount,
-            date: now,
-            stage: 'Deposit received',
-          ),
-        );
+  List<_ClientPaymentDisplay> _buildClientPayments(DateTime now) {
+    final combined = <_ClientPaymentDisplay>[];
+    if (_isRetainerClient(_client)) {
+      final settings = _client.retainerSettings;
+      if (settings != null && settings.isEnabled) {
+        final start = now.subtract(const Duration(days: 30));
+        final end = now.add(const Duration(days: 60));
+        final dates = _scheduledRetainerDates(settings, start, end);
+        for (final date in dates) {
+          combined.add(
+            _ClientPaymentDisplay(
+              amount: settings.amount,
+              date: date,
+              title: 'Retainer',
+              subtitle:
+                  '${settings.frequency == 'twice_month' ? 'Twice a month' : 'Once a month'} • Planned • ${_formatDate(date)}',
+              status: 'planned',
+            ),
+          );
+        }
+      }
+    } else {
+      for (final payment in _payments) {
+        if (payment.status == 'planned') {
+          final dueDate = payment.dueDate ?? payment.createdAt;
+          combined.add(
+            _ClientPaymentDisplay(
+              amount: payment.amount,
+              date: dueDate,
+              title: _projectTitleForPayment(payment),
+              subtitle: payment.dueDate == null
+                  ? '${_paymentKindLabel(payment.kind)} • Planned • No due date'
+                  : '${_paymentKindLabel(payment.kind)} • Planned • ${_formatDate(payment.dueDate!)}',
+              status: 'planned',
+              sourcePayment: payment,
+            ),
+          );
+        }
+        if (payment.status == 'paid' && payment.paidDate != null) {
+          combined.add(
+            _ClientPaymentDisplay(
+              amount: payment.amount,
+              date: payment.paidDate!,
+              title: _projectTitleForPayment(payment),
+              subtitle:
+                  '${_paymentKindLabel(payment.kind)} • Paid • ${_formatDate(payment.paidDate!)}',
+              status: 'paid',
+              sourcePayment: payment,
+            ),
+          );
+        }
       }
     }
     combined.sort((a, b) => a.date.compareTo(b.date));
     return combined;
   }
 
-  double _depositAmount(Project project) {
-    if (project.stage != 'Deposit received' || project.depositPercent == null) {
-      return 0;
+  List<DateTime> _scheduledRetainerDates(
+    RetainerSettings settings,
+    DateTime start,
+    DateTime end,
+  ) {
+    final dates = <DateTime>[];
+    var cursor = _normalizeDate(settings.nextPaymentDate);
+    while (cursor.isBefore(start)) {
+      cursor = settings.frequency == 'twice_month'
+          ? cursor.add(const Duration(days: 14))
+          : _addOneMonth(cursor);
     }
-    return project.amount * (project.depositPercent! / 100);
+    while (!cursor.isAfter(end)) {
+      dates.add(cursor);
+      cursor = settings.frequency == 'twice_month'
+          ? cursor.add(const Duration(days: 14))
+          : _addOneMonth(cursor);
+    }
+    return dates;
   }
 
-  _ContactInfo? _extractContactInfo(List<String> summaryParts) {
-    final contactPart = summaryParts.firstWhere(
-      (part) =>
-          part.contains('Phone:') || part.contains('Email:') || part.contains('Telegram:'),
-      orElse: () => '',
-    );
-    if (contactPart.isEmpty) {
-      return null;
-    }
-    final match = RegExp(r'^(.*)\s*\((.*)\)$').firstMatch(contactPart);
-    final name = match?.group(1)?.trim() ?? '';
-    final detailsRaw = match?.group(2)?.trim() ?? contactPart;
-    final details = <String, String>{};
-    for (final segment in detailsRaw.split(',')) {
-      final trimmed = segment.trim();
-      if (trimmed.startsWith('Phone:')) {
-        details['Phone'] = trimmed.replaceFirst('Phone:', '').trim();
-      } else if (trimmed.startsWith('Email:')) {
-        details['Email'] = trimmed.replaceFirst('Email:', '').trim();
-      } else if (trimmed.startsWith('Telegram:')) {
-        details['Telegram'] = trimmed.replaceFirst('Telegram:', '').trim();
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  DateTime _addOneMonth(DateTime date) {
+    final year = date.year;
+    final month = date.month + 1;
+    final targetYear = month > 12 ? year + 1 : year;
+    final targetMonth = month > 12 ? 1 : month;
+    final lastDay = DateTime(targetYear, targetMonth + 1, 0).day;
+    final day = date.day <= lastDay ? date.day : lastDay;
+    return DateTime(targetYear, targetMonth, day);
+  }
+
+  String _paymentKindLabel(String kind) {
+    return switch (kind) {
+      'deposit' => 'Deposit',
+      'milestone' => 'Milestone',
+      'final' => 'Final payment',
+      _ => 'Other',
+    };
+  }
+
+  String _projectTitleForPayment(ProjectPayment payment) {
+    final project = _projects.cast<Project?>().firstWhere(
+          (project) => project?.id == payment.projectId,
+          orElse: () => null,
+        );
+    return project?.title ?? 'Unknown project';
+  }
+
+  List<String> _buildSummaryChips() {
+    final chips = <String>[];
+    chips.add(_isRetainerClient(_client) ? 'Retainer' : 'Project');
+    if (_isRetainerClient(_client)) {
+      final settings = _client.retainerSettings;
+      if (settings != null) {
+        chips.add(
+          settings.frequency == 'twice_month' ? 'Twice a month' : 'Once a month',
+        );
+        chips.add('Next: ${_formatDate(settings.nextPaymentDate)}');
       }
     }
-    return _ContactInfo(name: name, details: details);
-  }
-
-  String _updateSummarySalary(String summary, double salary) {
-    final salaryLabel = _formatCurrency(salary);
-    return summary.replaceFirst(RegExp(r'€\d+'), salaryLabel);
+    return chips;
   }
 
   Future<void> _copyToClipboard(String value) async {
@@ -559,11 +851,22 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 }
 
-class _ContactInfo {
-  const _ContactInfo({required this.name, required this.details});
+class _ClientPaymentDisplay {
+  const _ClientPaymentDisplay({
+    required this.amount,
+    required this.date,
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    this.sourcePayment,
+  });
 
-  final String name;
-  final Map<String, String> details;
+  final double amount;
+  final DateTime date;
+  final String title;
+  final String subtitle;
+  final String status;
+  final ProjectPayment? sourcePayment;
 }
 
 class _InfoCard extends StatelessWidget {
@@ -730,16 +1033,16 @@ class _ProjectRow extends StatelessWidget {
     required this.onDuplicate,
     required this.onUpdateStage,
     required this.onDelete,
-    required this.formatCurrency,
     required this.formatDate,
+    required this.stageLabel,
   });
 
   final Project project;
   final VoidCallback onDuplicate;
   final VoidCallback onUpdateStage;
   final VoidCallback onDelete;
-  final String Function(double) formatCurrency;
   final String Function(DateTime) formatDate;
+  final String stageLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -751,25 +1054,27 @@ class _ProjectRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                project.name,
+                project.title,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
               ),
               const SizedBox(height: 4),
               Text(
-                project.stage,
+                stageLabel,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                '${formatCurrency(project.amount)} • ${formatDate(project.nextStageDeadline)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
+              if (project.deadlineDate != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  formatDate(project.deadlineDate!),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
             ],
           ),
         ),
@@ -804,9 +1109,19 @@ class _ProjectRow extends StatelessWidget {
 }
 
 class _PaymentRow extends StatelessWidget {
-  const _PaymentRow({required this.payment});
+  const _PaymentRow({
+    required this.payment,
+    required this.formatDate,
+    this.onEdit,
+    this.onDelete,
+    this.onMarkPaid,
+  });
 
-  final Payment payment;
+  final _ClientPaymentDisplay payment;
+  final String Function(DateTime) formatDate;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onMarkPaid;
 
   @override
   Widget build(BuildContext context) {
@@ -820,14 +1135,14 @@ class _PaymentRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  payment.stage,
+                  payment.title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  payment.client,
+                  payment.subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -841,6 +1156,35 @@ class _PaymentRow extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
           ),
+          if (onEdit != null || onDelete != null || onMarkPaid != null)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'edit') {
+                  onEdit?.call();
+                } else if (value == 'paid') {
+                  onMarkPaid?.call();
+                } else if (value == 'delete') {
+                  onDelete?.call();
+                }
+              },
+              itemBuilder: (context) => [
+                if (onMarkPaid != null)
+                  const PopupMenuItem(
+                    value: 'paid',
+                    child: Text('Mark as paid'),
+                  ),
+                if (onEdit != null)
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Text('Edit'),
+                  ),
+                if (onDelete != null)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete'),
+                  ),
+              ],
+            ),
         ],
       ),
     );

@@ -1,35 +1,100 @@
+import 'retainer_settings.dart';
+
 class Client {
   const Client({
+    required this.id,
     required this.name,
-    required this.project,
-    required this.status,
-    required this.budget,
-    required this.deadline,
+    required this.type,
+    required this.currency,
+    required this.isArchived,
+    required this.createdAt,
+    required this.updatedAt,
+    this.contactPerson,
+    this.phone,
+    this.email,
+    this.telegram,
+    this.plannedBudget,
+    this.retainerSettings,
   });
 
+  final String id;
   final String name;
-  final String project;
-  final String status;
-  final double budget;
-  final DateTime deadline;
+  final String type;
+  final String currency;
+  final bool isArchived;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? contactPerson;
+  final String? phone;
+  final String? email;
+  final String? telegram;
+  final double? plannedBudget;
+  final RetainerSettings? retainerSettings;
 
   factory Client.fromJson(Map<String, dynamic> json) {
+    final legacyProject = json['project'] as String?;
+    final legacyBudget = (json['budget'] as num?)?.toDouble();
+    final legacyType = legacyProject?.toLowerCase().startsWith('retainer') == true
+        ? 'retainer'
+        : 'project';
+    final type = json['type'] as String? ?? legacyType;
+    final id = json['id'] as String? ?? (json['name'] as String? ?? '');
+    final retainerSettingsJson = json['retainerSettings'] as Map<String, dynamic>?;
+    final parsedRetainer = retainerSettingsJson == null
+        ? _buildLegacyRetainerSettings(legacyProject, legacyBudget)
+        : RetainerSettings.fromJson(retainerSettingsJson);
+
     return Client(
+      id: id,
       name: json['name'] as String? ?? '',
-      project: json['project'] as String? ?? '',
-      status: json['status'] as String? ?? '',
-      budget: (json['budget'] as num?)?.toDouble() ?? 0,
-      deadline: DateTime.tryParse(json['deadline'] as String? ?? '') ?? DateTime.now(),
+      type: type,
+      contactPerson: json['contactPerson'] as String?,
+      phone: json['phone'] as String?,
+      email: json['email'] as String?,
+      telegram: json['telegram'] as String?,
+      plannedBudget: (json['plannedBudget'] as num?)?.toDouble() ?? legacyBudget,
+      currency: json['currency'] as String? ?? 'EUR',
+      isArchived: json['isArchived'] as bool? ?? false,
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      updatedAt:
+          DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
+      retainerSettings: type == 'retainer' ? parsedRetainer : null,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'name': name,
-      'project': project,
-      'status': status,
-      'budget': budget,
-      'deadline': deadline.toIso8601String(),
+      'type': type,
+      'contactPerson': contactPerson,
+      'phone': phone,
+      'email': email,
+      'telegram': telegram,
+      'plannedBudget': plannedBudget,
+      'currency': currency,
+      'isArchived': isArchived,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'retainerSettings': retainerSettings?.toJson(),
     };
   }
+}
+
+RetainerSettings? _buildLegacyRetainerSettings(String? projectSummary, double? budget) {
+  if (projectSummary == null) {
+    return null;
+  }
+  if (!projectSummary.toLowerCase().startsWith('retainer')) {
+    return null;
+  }
+  final frequency = projectSummary.contains('Twice a month') ? 'twice_month' : 'once_month';
+  return RetainerSettings(
+    amount: budget ?? 0,
+    frequency: frequency,
+    nextPaymentDate: DateTime.now(),
+    isEnabled: true,
+    updatedAt: DateTime.now(),
+  );
 }
