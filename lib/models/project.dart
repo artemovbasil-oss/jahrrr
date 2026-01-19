@@ -3,7 +3,9 @@ class Project {
     required this.id,
     required this.clientId,
     required this.title,
+    required this.amount,
     required this.status,
+    required this.isArchived,
     required this.createdAt,
     required this.updatedAt,
     this.deadlineDate,
@@ -12,7 +14,9 @@ class Project {
   final String id;
   final String clientId;
   final String title;
+  final double amount;
   final String status;
+  final bool isArchived;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deadlineDate;
@@ -22,7 +26,9 @@ class Project {
       id: '',
       clientId: '',
       title: '',
+      amount: 0,
       status: '',
+      isArchived: false,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -36,7 +42,9 @@ class Project {
       id: json['id'] as String? ?? json['name'] as String? ?? '',
       clientId: json['clientId'] as String? ?? json['clientName'] as String? ?? '',
       title: json['title'] as String? ?? json['name'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
       status: json['status'] as String? ?? _mapLegacyStage(legacyStage) ?? '',
+      isArchived: json['isArchived'] as bool? ?? false,
       deadlineDate: json['deadlineDate'] == null
           ? legacyDeadline
           : DateTime.tryParse(json['deadlineDate'] as String? ?? ''),
@@ -52,7 +60,9 @@ class Project {
       'id': id,
       'clientId': clientId,
       'title': title,
+      'amount': amount,
       'status': status,
+      'isArchived': isArchived,
       'deadlineDate': deadlineDate?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),

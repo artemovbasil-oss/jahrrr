@@ -5,7 +5,6 @@ class Client {
     required this.id,
     required this.name,
     required this.type,
-    required this.currency,
     required this.isArchived,
     required this.createdAt,
     required this.updatedAt,
@@ -20,7 +19,6 @@ class Client {
   final String id;
   final String name;
   final String type;
-  final String currency;
   final bool isArchived;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -53,7 +51,6 @@ class Client {
       email: json['email'] as String?,
       telegram: json['telegram'] as String?,
       plannedBudget: (json['plannedBudget'] as num?)?.toDouble() ?? legacyBudget,
-      currency: json['currency'] as String? ?? 'EUR',
       isArchived: json['isArchived'] as bool? ?? false,
       createdAt:
           DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
@@ -73,7 +70,6 @@ class Client {
       'email': email,
       'telegram': telegram,
       'plannedBudget': plannedBudget,
-      'currency': currency,
       'isArchived': isArchived,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),

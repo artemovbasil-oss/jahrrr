@@ -12,6 +12,7 @@ class ClientDetailScreen extends StatefulWidget {
     required this.client,
     required this.projects,
     required this.payments,
+    this.openRetainerSettings = false,
     required this.onDeleteClient,
     required this.onUpdateClient,
     required this.onUpdatePayment,
@@ -24,12 +25,14 @@ class ClientDetailScreen extends StatefulWidget {
   final Client client;
   final List<Project> projects;
   final List<ProjectPayment> payments;
+  final bool openRetainerSettings;
   final Future<void> Function() onDeleteClient;
   final Future<void> Function(Client updatedClient) onUpdateClient;
   final Future<void> Function(ProjectPayment oldPayment, ProjectPayment updatedPayment)
       onUpdatePayment;
   final Future<void> Function(ProjectPayment payment) onDeletePayment;
-  final Future<Project> Function(Project project) onDuplicateProject;
+  final Future<Project> Function(Project project, String newTitle, bool copyWithAllSettings)
+      onDuplicateProject;
   final Future<void> Function(Project oldProject, Project updatedProject) onUpdateProject;
   final Future<void> Function(Project project) onDeleteProject;
 
@@ -59,6 +62,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     _client = widget.client;
     _projects = List<Project>.from(widget.projects);
     _payments = List<ProjectPayment>.from(widget.payments);
+    if (widget.openRetainerSettings && _isRetainerClient(_client)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _editSalary();
+      });
+    }
   }
 
   @override
@@ -71,6 +79,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final pastPayments =
         computedPayments.where((payment) => !payment.date.isAfter(normalizedNow)).toList();
     final summaryParts = _buildSummaryChips();
+    final visibleProjects = _projects.where((project) => !project.isArchived).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -92,14 +101,14 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     ),
                     PopupMenuItem(
                       value: 'delete',
-                      child: Text('Delete client'),
+                      child: Text('Archive client'),
                     ),
                   ],
                 ),
               ]
             : [
                 IconButton(
-                  tooltip: 'Delete client',
+                  tooltip: 'Archive client',
                   icon: const Icon(Icons.delete_outline),
                   onPressed: _confirmDeleteClient,
                 ),
@@ -116,7 +125,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 label: 'Type',
                 value: _isRetainerClient(_client) ? 'Retainer' : 'Project',
               ),
-              _InfoRow(label: 'Currency', value: _client.currency),
               if (_isRetainerClient(_client))
                 _InfoRow(
                   label: 'Retainer amount',
@@ -155,17 +163,17 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           if (!_isRetainerClient(_client)) ...[
             _InfoCard(
               title: 'Projects',
-              children: _projects.isEmpty
+              children: visibleProjects.isEmpty
                   ? [const Text('No projects yet.')]
-                  : _projects
+                  : visibleProjects
                       .map(
                         (project) => Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: _ProjectRow(
                             project: project,
+                            onEdit: () => _editProject(project),
+                            onArchive: () => _archiveProject(project),
                             onDuplicate: () => _duplicateProject(project),
-                            onUpdateStage: () => _updateProjectStage(project),
-                            onDelete: () => _deleteProject(project),
                             formatDate: _formatDate,
                             stageLabel:
                                 _projectStageLabels[project.status] ?? project.status,
@@ -185,6 +193,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       (payment) => _PaymentRow(
                         payment: payment,
                         formatDate: _formatDate,
+                        formatCurrency: _formatCurrency,
                         onEdit: payment.sourcePayment == null
                             ? null
                             : () => _editPayment(payment.sourcePayment!),
@@ -209,6 +218,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       (payment) => _PaymentRow(
                         payment: payment,
                         formatDate: _formatDate,
+                        formatCurrency: _formatCurrency,
                         onEdit: payment.sourcePayment == null
                             ? null
                             : () => _editPayment(payment.sourcePayment!),
@@ -228,7 +238,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete client'),
+        title: const Text('Archive client'),
         content: const Text('This will archive the client and hide its projects and payments.'),
         actions: [
           TextButton(
@@ -237,7 +247,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Archive'),
           ),
         ],
       ),
@@ -304,7 +314,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       email: _client.email,
       telegram: _client.telegram,
       plannedBudget: _client.plannedBudget,
-      currency: _client.currency,
       isArchived: _client.isArchived,
       createdAt: _client.createdAt,
       updatedAt: DateTime.now(),
@@ -320,7 +329,70 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Future<void> _duplicateProject(Project project) async {
-    final duplicated = await widget.onDuplicateProject(project);
+    final nameController = TextEditingController();
+    var copyWithAllSettings = true;
+    var isValid = false;
+
+    final shouldDuplicate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Duplicate project'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: copyWithAllSettings,
+                    title: const Text('Copy with all settings'),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        copyWithAllSettings = value ?? true;
+                      });
+                    },
+                  ),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'New name',
+                    ),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        isValid = value.trim().isNotEmpty;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(dialogContext).pop(true)
+                      : null,
+                  child: const Text('Create copy'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldDuplicate != true) {
+      return;
+    }
+    final newTitle = nameController.text.trim();
+    if (newTitle.isEmpty) {
+      return;
+    }
+    final duplicated =
+        await widget.onDuplicateProject(project, newTitle, copyWithAllSettings);
     if (!mounted) {
       return;
     }
@@ -329,17 +401,33 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     });
   }
 
-  Future<void> _deleteProject(Project project) async {
+  Future<void> _archiveProject(Project project) async {
     await widget.onDeleteProject(project);
     if (!mounted) {
       return;
     }
     setState(() {
-      _projects.remove(project);
+      final index = _projects.indexOf(project);
+      if (index != -1) {
+        _projects[index] = Project(
+          id: project.id,
+          clientId: project.clientId,
+          title: project.title,
+          amount: project.amount,
+          status: project.status,
+          isArchived: true,
+          deadlineDate: project.deadlineDate,
+          createdAt: project.createdAt,
+          updatedAt: DateTime.now(),
+        );
+      }
     });
   }
 
-  Future<void> _updateProjectStage(Project project) async {
+  Future<void> _editProject(Project project) async {
+    final titleController = TextEditingController(text: project.title);
+    final amountController =
+        TextEditingController(text: project.amount.toStringAsFixed(0));
     var selectedStage = project.status;
     DateTime? selectedDeadline = project.deadlineDate;
     var showErrors = false;
@@ -350,15 +438,31 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Update stage'),
+              title: const Text('Edit project'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Project name',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amountController,
+                      decoration: const InputDecoration(
+                        labelText: 'Project amount (€)',
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: selectedStage.isEmpty ? null : selectedStage,
                       decoration: const InputDecoration(
-                        labelText: 'Stage',
+                        labelText: 'Project stage',
                       ),
                       items: _projectStageLabels.entries
                           .map(
@@ -374,15 +478,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         });
                       },
                     ),
-                    if (showErrors && (selectedStage.isEmpty)) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Select a stage',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                      ),
-                    ],
                     const SizedBox(height: 12),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -409,6 +504,16 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         });
                       },
                     ),
+                    if (showErrors)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Enter a name and amount',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -419,7 +524,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 ),
                 FilledButton(
                   onPressed: () {
-                    if (selectedStage.isEmpty) {
+                    final title = titleController.text.trim();
+                    final amount = double.tryParse(
+                      amountController.text.trim().replaceAll(',', '.'),
+                    );
+                    if (title.isEmpty || amount == null || amount <= 0) {
                       setDialogState(() {
                         showErrors = true;
                       });
@@ -427,7 +536,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     }
                     Navigator.of(dialogContext).pop(true);
                   },
-                  child: const Text('Update'),
+                  child: const Text('Save'),
                 ),
               ],
             );
@@ -440,15 +549,20 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       return;
     }
 
-    final now = DateTime.now();
+    final updatedAmount =
+        double.tryParse(amountController.text.trim().replaceAll(',', '.')) ??
+            project.amount;
+    final updatedTitle = titleController.text.trim();
     final updatedProject = Project(
       id: project.id,
       clientId: project.clientId,
-      title: project.title,
+      title: updatedTitle,
+      amount: updatedAmount,
       status: selectedStage,
+      isArchived: project.isArchived,
       deadlineDate: selectedDeadline,
       createdAt: project.createdAt,
-      updatedAt: now,
+      updatedAt: DateTime.now(),
     );
 
     await widget.onUpdateProject(project, updatedProject);
@@ -709,7 +823,14 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return '€${amount.toStringAsFixed(0)}';
+    final rounded = amount.round();
+    final absolute = rounded.abs().toString();
+    final formatted = absolute.replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'),
+      (match) => '${match[1]},',
+    );
+    final prefix = rounded < 0 ? '-' : '';
+    return '€$prefix$formatted';
   }
 
   bool _isRetainerClient(Client client) {
@@ -739,6 +860,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       }
     } else {
       for (final payment in _payments) {
+        final project = _projectForPayment(payment);
+        if (project != null && project.isArchived) {
+          continue;
+        }
         if (payment.status == 'planned') {
           final dueDate = payment.dueDate ?? payment.createdAt;
           combined.add(
@@ -823,6 +948,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           orElse: () => null,
         );
     return project?.title ?? 'Unknown project';
+  }
+
+  Project? _projectForPayment(ProjectPayment payment) {
+    return _projects.cast<Project?>().firstWhere(
+          (project) => project?.id == payment.projectId,
+          orElse: () => null,
+        );
   }
 
   List<String> _buildSummaryChips() {
@@ -1031,16 +1163,16 @@ class _ProjectRow extends StatelessWidget {
   const _ProjectRow({
     required this.project,
     required this.onDuplicate,
-    required this.onUpdateStage,
-    required this.onDelete,
+    required this.onEdit,
+    required this.onArchive,
     required this.formatDate,
     required this.stageLabel,
   });
 
   final Project project;
   final VoidCallback onDuplicate;
-  final VoidCallback onUpdateStage;
-  final VoidCallback onDelete;
+  final VoidCallback onEdit;
+  final VoidCallback onArchive;
   final String Function(DateTime) formatDate;
   final String stageLabel;
 
@@ -1080,26 +1212,26 @@ class _ProjectRow extends StatelessWidget {
         ),
         PopupMenuButton<String>(
           onSelected: (value) {
-            if (value == 'duplicate') {
+            if (value == 'edit') {
+              onEdit();
+            } else if (value == 'archive') {
+              onArchive();
+            } else if (value == 'duplicate') {
               onDuplicate();
-            } else if (value == 'update-stage') {
-              onUpdateStage();
-            } else if (value == 'delete') {
-              onDelete();
             }
           },
           itemBuilder: (context) => const [
             PopupMenuItem(
-              value: 'update-stage',
-              child: Text('Change stage'),
+              value: 'edit',
+              child: Text('Edit'),
+            ),
+            PopupMenuItem(
+              value: 'archive',
+              child: Text('Archive'),
             ),
             PopupMenuItem(
               value: 'duplicate',
               child: Text('Duplicate'),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Text('Delete'),
             ),
           ],
         ),
@@ -1112,6 +1244,7 @@ class _PaymentRow extends StatelessWidget {
   const _PaymentRow({
     required this.payment,
     required this.formatDate,
+    required this.formatCurrency,
     this.onEdit,
     this.onDelete,
     this.onMarkPaid,
@@ -1119,6 +1252,7 @@ class _PaymentRow extends StatelessWidget {
 
   final _ClientPaymentDisplay payment;
   final String Function(DateTime) formatDate;
+  final String Function(double) formatCurrency;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onMarkPaid;
@@ -1151,7 +1285,7 @@ class _PaymentRow extends StatelessWidget {
             ),
           ),
           Text(
-            '€${payment.amount.toStringAsFixed(0)}',
+            formatCurrency(payment.amount),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
