@@ -54,6 +54,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _contactEmailController = TextEditingController();
   final TextEditingController _contactTelegramController = TextEditingController();
   final TextEditingController _projectNameController = TextEditingController();
+  final TextEditingController _projectAmountController = TextEditingController();
   final TextEditingController _paymentAmountController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   String? _selectedProjectClient;
@@ -95,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _contactEmailController.dispose();
     _contactTelegramController.dispose();
     _projectNameController.dispose();
+    _projectAmountController.dispose();
     _paymentAmountController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -157,15 +159,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   (client.contactPerson ?? '').toLowerCase().contains(normalizedQuery),
             )
             .toList();
-    final upcomingPaymentItems =
-        _isLoading ? const <_UpcomingPayment>[] : _buildUpcomingPayments(today);
+    final upcomingPaymentItems = _isLoading
+        ? const <_PaymentPillItem>[]
+        : _buildUpcomingPayments(today, range7End);
     final filteredPayments = normalizedQuery.isEmpty
         ? upcomingPaymentItems
         : upcomingPaymentItems
             .where(
               (payment) =>
-                  payment.client.toLowerCase().contains(normalizedQuery) ||
-                  payment.kind.toLowerCase().contains(normalizedQuery),
+                  payment.clientName.toLowerCase().contains(normalizedQuery) ||
+                  payment.tagLabel.toLowerCase().contains(normalizedQuery),
             )
             .toList();
     final milestoneWidgets = _isLoading
@@ -235,59 +238,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final paymentWidgets = _isLoading
         ? [_buildEmptyState('Loading payments...')]
         : filteredPayments.isEmpty
-            ? [_buildEmptyState('No payments expected in the next 30 days.')]
+            ? [_buildEmptyState('No payments this week.')]
             : [
-                Card(
-                  child: Column(
-                    children: [
-                      ...filteredPayments.map(
-                        (payment) => ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                            child: Icon(
-                              Icons.payments,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                          title: Text(payment.client),
-                          subtitle: Text('${payment.kind} • ${_formatDate(payment.date)}'),
-                          trailing: Text(
-                            '€${payment.amount.toStringAsFixed(0)}',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Total next 30 days',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            Text(
-                              _formatCurrency(
-                                filteredPayments.fold<double>(
-                                  0,
-                                  (sum, payment) => sum + payment.amount,
-                                ),
-                              ),
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                          ],
-                        ),
+                ...filteredPayments.map(
+                  (payment) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _PaymentPill(
+                      item: payment,
+                      formattedAmount: _formatCurrency(payment.amount),
+                      formattedDate: _formatDate(payment.date),
+                      avatarColor: _paymentPillColor(context, payment),
+                      onTap: () {
+                        if (payment.type == _PaymentPillType.project) {
+                          final project = _projectById(payment.projectId ?? '');
+                          if (project == null) {
+                            return;
+                          }
+                          final client = _clientById(project.clientId);
+                          if (client == null) {
+                            return;
+                          }
+                          _openClientDetails(client);
+                        } else {
+                          final client = _clientById(payment.clientId);
+                          if (client == null) {
+                            return;
+                          }
+                          _openClientDetails(client, openRetainerSettings: true);
+                        }
+                      },
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ];
-    final upcomingRetainerPayment = _nextRetainerPayment(DateTime.now());
+              ];
     final clientWidgets = _isLoading
         ? [_buildEmptyState('Loading clients...')]
         : filteredClients.isEmpty
@@ -299,9 +282,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     isRetainer: _isRetainerClient(client),
                     initials: _clientInitials(client.name),
                     typeLabel: _clientTypeLabel(client),
-                    totalAmount: _clientTotalAmount(client),
+                    formattedAmount: _formatCurrency(_clientTotalAmount(client)),
                     cardColor: _clientCardColor(context, client),
+                    tagColor: _clientTagColor(client),
                     onTap: () => _openClientDetails(client),
+                    onEdit: () => _showEditClientForm(client),
+                    onArchive: () => _archiveClient(client),
+                    onDuplicate: () => _duplicateClient(client),
                   ),
                 )
                 .toList();
@@ -416,11 +403,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ...milestoneWidgets,
           const SizedBox(height: 24),
           SectionHeader(
-            title: 'Payments',
+            title: 'Upcoming payments',
             actionLabel: 'Add',
             onActionPressed: () {
               final hasProjects = _projects.any(
-                (project) => _clientById(project.clientId)?.isArchived != true,
+                (project) =>
+                    _clientById(project.clientId)?.isArchived != true &&
+                    !project.isArchived,
               );
               if (!hasProjects) {
                 _showSnackBar(context, 'Create a project first');
@@ -430,14 +419,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           const SizedBox(height: 12),
-          if (upcomingRetainerPayment != null) ...[
-            _UpcomingRetainerPaymentCard(
-              payment: upcomingRetainerPayment,
-              formattedAmount: _formatCurrency(upcomingRetainerPayment.amount),
-              formattedDate: _formatDate(upcomingRetainerPayment.date),
-            ),
-            const SizedBox(height: 12),
-          ],
           ...paymentWidgets,
           const SizedBox(height: 24),
           SectionHeader(
@@ -937,6 +918,397 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showEditClientForm(Client client) {
+    final formKey = GlobalKey<FormState>();
+    _clientNameController.text = client.name;
+    _contactNameController.text = client.contactPerson ?? '';
+    _contactPhoneController.text = client.phone ?? '';
+    _contactEmailController.text = client.email ?? '';
+    _contactTelegramController.text = client.telegram ?? '';
+    _selectedContractType = client.type;
+    _selectedRetainerFrequency = client.retainerSettings?.frequency;
+    _selectedRetainerPayDate = client.retainerSettings?.nextPaymentDate;
+    _plannedBudgetController.text = _isRetainerClient(client)
+        ? (client.retainerSettings?.amount ?? 0).toStringAsFixed(0)
+        : (client.plannedBudget?.toStringAsFixed(0) ?? '');
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final contractLabel = _isRetainerClient(client) ? 'Retainer' : 'Project';
+            return AlertDialog(
+              title: const Text('Edit client'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: _clientNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Client name',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a client name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Contract type: $contractLabel',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _plannedBudgetController,
+                        decoration: InputDecoration(
+                          labelText: _isRetainerClient(client)
+                              ? 'Retainer amount (€)'
+                              : 'Planned budget (€) (optional)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          final trimmed = value?.trim() ?? '';
+                          if (_isRetainerClient(client)) {
+                            if (trimmed.isEmpty) {
+                              return 'Enter a retainer amount';
+                            }
+                            final parsed =
+                                double.tryParse(trimmed.replaceAll(',', '.'));
+                            if (parsed == null || parsed <= 0) {
+                              return 'Enter a valid amount';
+                            }
+                          } else if (trimmed.isNotEmpty) {
+                            final parsed =
+                                double.tryParse(trimmed.replaceAll(',', '.'));
+                            if (parsed == null || parsed < 0) {
+                              return 'Enter a valid budget';
+                            }
+                          }
+                          return null;
+                        },
+                      ),
+                      if (_isRetainerClient(client)) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _selectedRetainerFrequency,
+                          decoration: const InputDecoration(
+                            labelText: 'Payment frequency',
+                          ),
+                          items: _retainerFrequencyLabels.entries
+                              .map(
+                                (entry) => DropdownMenuItem(
+                                  value: entry.key,
+                                  child: Text(entry.value),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              _selectedRetainerFrequency = value;
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Select a payment frequency';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Next payment date'),
+                          subtitle: Text(
+                            _selectedRetainerPayDate == null
+                                ? 'Select a date'
+                                : _formatDate(_selectedRetainerPayDate!),
+                          ),
+                          trailing: const Icon(Icons.calendar_today_outlined),
+                          onTap: () async {
+                            final now = DateTime.now();
+                            final picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: _selectedRetainerPayDate ?? now,
+                              firstDate: now,
+                              lastDate: DateTime(now.year + 5),
+                            );
+                            if (picked == null) {
+                              return;
+                            }
+                            setDialogState(() {
+                              _selectedRetainerPayDate = picked;
+                            });
+                          },
+                        ),
+                        if (_selectedRetainerPayDate == null) ...[
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Select a payment date',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ],
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _contactNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Contact name (optional)',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactPhoneController,
+                        decoration: const InputDecoration(
+                          labelText: 'Phone (optional)',
+                        ),
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactEmailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email (optional)',
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contactTelegramController,
+                        decoration: const InputDecoration(
+                          labelText: 'Telegram (optional)',
+                          hintText: '@username',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final isValid = formKey.currentState?.validate() ?? false;
+                    if (_isRetainerClient(client) && _selectedRetainerPayDate == null) {
+                      setDialogState(() {});
+                      return;
+                    }
+                    if (!isValid) {
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop();
+                    _updateClientFromForm(client);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateClientFromForm(Client client) async {
+    final contactName = _contactNameController.text.trim();
+    final contactPhone = _contactPhoneController.text.trim();
+    final contactEmail = _contactEmailController.text.trim();
+    final contactTelegram = _contactTelegramController.text.trim();
+    final plannedBudgetValue = _plannedBudgetController.text.trim();
+    final plannedBudget = plannedBudgetValue.isEmpty
+        ? null
+        : double.tryParse(plannedBudgetValue.replaceAll(',', '.'));
+    final now = DateTime.now();
+    final retainerSettings = _isRetainerClient(client)
+        ? RetainerSettings(
+            amount: plannedBudget ?? 0,
+            frequency: _selectedRetainerFrequency ?? 'once_month',
+            nextPaymentDate: _selectedRetainerPayDate ?? now,
+            isEnabled: client.retainerSettings?.isEnabled ?? true,
+            updatedAt: now,
+          )
+        : null;
+
+    final updatedClient = Client(
+      id: client.id,
+      name: _clientNameController.text.trim(),
+      type: client.type,
+      contactPerson: contactName.isEmpty ? null : contactName,
+      phone: contactPhone.isEmpty ? null : contactPhone,
+      email: contactEmail.isEmpty ? null : contactEmail,
+      telegram: contactTelegram.isEmpty ? null : contactTelegram,
+      plannedBudget: _isRetainerClient(client) ? null : plannedBudget,
+      isArchived: client.isArchived,
+      createdAt: client.createdAt,
+      updatedAt: now,
+      retainerSettings: retainerSettings,
+    );
+    await _updateClient(updatedClient);
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar(context, 'Client updated');
+  }
+
+  Future<void> _duplicateClient(Client client) async {
+    final nameController = TextEditingController();
+    var copyWithAllSettings = true;
+    var isValid = false;
+
+    final shouldDuplicate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Duplicate client'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: copyWithAllSettings,
+                    title: const Text('Copy with all settings'),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        copyWithAllSettings = value ?? true;
+                      });
+                    },
+                  ),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'New name',
+                    ),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        isValid = value.trim().isNotEmpty;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(dialogContext).pop(true)
+                      : null,
+                  child: const Text('Create copy'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldDuplicate != true) {
+      return;
+    }
+    final newName = nameController.text.trim();
+    if (newName.isEmpty) {
+      return;
+    }
+    final now = DateTime.now();
+    final newClientId = _generateId();
+    final shouldCopyRetainer = _isRetainerClient(client) && copyWithAllSettings;
+    final retainerSettings = shouldCopyRetainer && client.retainerSettings != null
+        ? RetainerSettings(
+            amount: client.retainerSettings!.amount,
+            frequency: client.retainerSettings!.frequency,
+            nextPaymentDate: client.retainerSettings!.nextPaymentDate,
+            isEnabled: client.retainerSettings!.isEnabled,
+            updatedAt: now,
+          )
+        : null;
+
+    final duplicatedClient = Client(
+      id: newClientId,
+      name: newName,
+      type: client.type,
+      contactPerson: client.contactPerson,
+      phone: client.phone,
+      email: client.email,
+      telegram: client.telegram,
+      plannedBudget: client.plannedBudget,
+      isArchived: false,
+      createdAt: now,
+      updatedAt: now,
+      retainerSettings: retainerSettings,
+    );
+
+    setState(() {
+      _clients.add(duplicatedClient);
+      if (!_isRetainerClient(client) && copyWithAllSettings) {
+        final projectsToCopy = _projects
+            .where((project) => project.clientId == client.id && !project.isArchived)
+            .toList();
+        final projectIdMap = <String, String>{};
+        for (final project in projectsToCopy) {
+          final newProjectId = _generateId();
+          projectIdMap[project.id] = newProjectId;
+          _projects.add(
+            Project(
+              id: newProjectId,
+              clientId: newClientId,
+              title: project.title,
+              amount: project.amount,
+              status: project.status,
+              isArchived: false,
+              deadlineDate: project.deadlineDate,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+        }
+        final paymentsToCopy = _projectPayments.where(
+          (payment) => projectIdMap.containsKey(payment.projectId),
+        );
+        for (final payment in paymentsToCopy) {
+          _projectPayments.add(
+            ProjectPayment(
+              id: _generateId(),
+              projectId: projectIdMap[payment.projectId] ?? payment.projectId,
+              amount: payment.amount,
+              kind: payment.kind,
+              status: payment.status,
+              dueDate: payment.dueDate,
+              paidDate: payment.paidDate,
+              createdAt: payment.createdAt,
+              updatedAt: now,
+            ),
+          );
+        }
+      }
+    });
+    await _persistData();
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar(context, 'Client duplicated');
+  }
+
   Future<void> _addClient() async {
     final contractType = _selectedContractType ?? 'project';
     final contactName = _contactNameController.text.trim();
@@ -969,7 +1341,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           email: contactEmail.isEmpty ? null : contactEmail,
           telegram: contactTelegram.isEmpty ? null : contactTelegram,
           plannedBudget: contractType == 'project' ? plannedBudget : null,
-          currency: 'EUR',
           isArchived: false,
           createdAt: now,
           updatedAt: now,
@@ -1013,8 +1384,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     _projectNameController.clear();
+    _projectAmountController.clear();
     _selectedProjectClient = null;
-    _selectedProjectStage = null;
+    _selectedProjectStage = 'first_meeting';
     _selectedProjectDeadline = null;
 
     showDialog<void>(
@@ -1064,6 +1436,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Enter a project name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _projectAmountController,
+                        decoration: const InputDecoration(
+                          labelText: 'Project amount (€)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a project amount';
+                          }
+                          final parsed = double.tryParse(value.replaceAll(',', '.'));
+                          if (parsed == null || parsed <= 0) {
+                            return 'Enter a valid amount';
                           }
                           return null;
                         },
@@ -1162,7 +1552,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final projectOptions = _projects
-                .where((project) => _clientById(project.clientId)?.isArchived != true)
+                .where(
+                  (project) =>
+                      _clientById(project.clientId)?.isArchived != true &&
+                      !project.isArchived,
+                )
                 .toList();
             return AlertDialog(
               title: const Text('New payment'),
@@ -1403,6 +1797,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     final stage = _selectedProjectStage ?? 'first_meeting';
     final deadline = _selectedProjectDeadline;
+    final amount = double.tryParse(
+          _projectAmountController.text.trim().replaceAll(',', '.'),
+        ) ??
+        0;
     final now = DateTime.now();
     setState(() {
       _projects.add(
@@ -1410,7 +1808,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           id: _generateId(),
           clientId: client.id,
           title: _projectNameController.text.trim(),
+          amount: amount,
           status: stage,
+          isArchived: false,
           deadlineDate: deadline,
           createdAt: now,
           updatedAt: now,
@@ -1431,9 +1831,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _persistData();
   }
 
-  Future<void> _deleteProject(Project project) async {
+  Future<void> _archiveProject(Project project) async {
     setState(() {
-      _projects.remove(project);
+      final index = _projects.indexWhere((item) => item.id == project.id);
+      if (index != -1) {
+        _projects[index] = Project(
+          id: project.id,
+          clientId: project.clientId,
+          title: project.title,
+          amount: project.amount,
+          status: project.status,
+          isArchived: true,
+          deadlineDate: project.deadlineDate,
+          createdAt: project.createdAt,
+          updatedAt: DateTime.now(),
+        );
+      }
     });
     await _persistData();
   }
@@ -1468,21 +1881,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _persistData();
   }
 
-  Future<Project> _duplicateProject(Project project) async {
+  Future<Project> _duplicateProject(
+    Project project,
+    String newTitle,
+    bool copyWithAllSettings,
+  ) async {
+    final now = DateTime.now();
     final duplicated = Project(
       id: _generateId(),
       clientId: project.clientId,
-      title: '${project.title} (copy)',
+      title: newTitle,
+      amount: project.amount,
       status: project.status,
+      isArchived: false,
       deadlineDate: project.deadlineDate,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
+      createdAt: now,
+      updatedAt: now,
     );
     await _addProjectFromDetails(duplicated);
+    if (copyWithAllSettings) {
+      final matchingPayments = _projectPayments
+          .where((payment) => payment.projectId == project.id)
+          .toList();
+      if (matchingPayments.isNotEmpty) {
+        setState(() {
+          for (final payment in matchingPayments) {
+            _projectPayments.add(
+              ProjectPayment(
+                id: _generateId(),
+                projectId: duplicated.id,
+                amount: payment.amount,
+                kind: payment.kind,
+                status: payment.status,
+                dueDate: payment.dueDate,
+                paidDate: payment.paidDate,
+                createdAt: payment.createdAt,
+                updatedAt: now,
+              ),
+            );
+          }
+        });
+        await _persistData();
+      }
+    }
     return duplicated;
   }
 
-  Future<void> _deleteClient(Client client) async {
+  Future<void> _archiveClient(Client client) async {
     setState(() {
       final index = _clients.indexWhere((item) => item.id == client.id);
       if (index != -1) {
@@ -1495,7 +1940,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           email: client.email,
           telegram: client.telegram,
           plannedBudget: client.plannedBudget,
-          currency: client.currency,
           isArchived: true,
           createdAt: client.createdAt,
           updatedAt: DateTime.now(),
@@ -1506,7 +1950,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _persistData();
   }
 
-  Future<void> _openClientDetails(Client client) async {
+  Future<void> _openClientDetails(
+    Client client, {
+    bool openRetainerSettings = false,
+  }) async {
     final clientProjects =
         _projects.where((project) => project.clientId == client.id).toList();
     final projectIds = clientProjects.map((project) => project.id).toSet();
@@ -1520,13 +1967,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           client: client,
           projects: clientProjects,
           payments: clientPayments,
-          onDeleteClient: () => _deleteClient(client),
+          openRetainerSettings: openRetainerSettings,
+          onDeleteClient: () => _archiveClient(client),
           onUpdateClient: _updateClient,
           onUpdatePayment: _updateProjectPayment,
           onDeletePayment: _deleteProjectPayment,
           onDuplicateProject: _duplicateProject,
           onUpdateProject: _updateProject,
-          onDeleteProject: _deleteProject,
+          onDeleteProject: _archiveProject,
         ),
       ),
     );
@@ -1558,6 +2006,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : const Color(0xFFF1F4F6);
   }
 
+  Color _clientTagColor(Client client) {
+    return _isRetainerClient(client)
+        ? const Color(0xFFE7DCCA)
+        : const Color(0xFFD9E4EC);
+  }
+
+  Color _paymentPillColor(BuildContext context, _PaymentPillItem item) {
+    final client = _clientById(item.clientId);
+    if (client != null) {
+      return _clientTagColor(client);
+    }
+    return Theme.of(context).colorScheme.surfaceVariant;
+  }
+
   String _clientInitials(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
@@ -1578,32 +2040,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return client.retainerSettings?.amount ?? 0;
     }
     final projectIds = _projects
-        .where((project) => project.clientId == client.id)
+        .where((project) => project.clientId == client.id && !project.isArchived)
         .map((project) => project.id)
         .toSet();
     final plannedSum = _projectPayments
         .where((payment) => projectIds.contains(payment.projectId))
         .fold<double>(0, (sum, payment) => sum + payment.amount);
-    return plannedSum == 0 ? (client.plannedBudget ?? 0) : plannedSum;
+    if (plannedSum != 0) {
+      return plannedSum;
+    }
+    final projectAmountSum = _projects
+        .where((project) => project.clientId == client.id && !project.isArchived)
+        .fold<double>(0, (sum, project) => sum + project.amount);
+    return projectAmountSum == 0 ? (client.plannedBudget ?? 0) : projectAmountSum;
   }
 
-  List<_UpcomingPayment> _buildUpcomingPayments(DateTime today) {
-    final windowEnd = today.add(const Duration(days: 29));
-    final upcoming = <_UpcomingPayment>[];
+  List<_PaymentPillItem> _buildUpcomingPayments(DateTime start, DateTime end) {
+    final upcoming = <_PaymentPillItem>[];
 
-    for (final entry in _retainerUpcomingPayments(today, windowEnd)) {
-      upcoming.add(entry);
+    for (final entry in _retainerUpcomingPayments(start, end)) {
+      final client = _clients.cast<Client?>().firstWhere(
+            (item) => item?.name == entry.client,
+            orElse: () => null,
+          );
+      if (client == null || client.isArchived) {
+        continue;
+      }
+      upcoming.add(
+        _PaymentPillItem(
+          clientId: client.id,
+          clientName: entry.client,
+          amount: entry.amount,
+          date: entry.date,
+          tagLabel: 'salary',
+          type: _PaymentPillType.retainer,
+        ),
+      );
     }
 
     for (final payment in _projectPayments) {
-      if (payment.status != 'planned' || payment.dueDate == null) {
+      if (payment.status != 'paid' || payment.paidDate == null) {
         continue;
       }
-      if (!_isWithinRange(payment.dueDate!, today, windowEnd)) {
+      if (!_isWithinRange(payment.paidDate!, start, end)) {
         continue;
       }
       final project = _projectById(payment.projectId);
-      if (project == null || !_isActiveProject(project)) {
+      if (project == null || project.isArchived) {
+        continue;
+      }
+      if (project.status != 'deposit_received' &&
+          project.status != 'payment_received_in_full') {
         continue;
       }
       final client = _clientById(project.clientId);
@@ -1611,30 +2098,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
         continue;
       }
       upcoming.add(
-        _UpcomingPayment(
-          client: client.name,
+        _PaymentPillItem(
+          clientId: client.id,
+          clientName: client.name,
           amount: payment.amount,
-          date: payment.dueDate!,
-          kind: _paymentKindLabels[payment.kind] ?? payment.kind,
+          date: payment.paidDate!,
+          tagLabel: 'project',
+          type: _PaymentPillType.project,
+          projectId: project.id,
         ),
       );
     }
 
-    upcoming.sort((a, b) => a.date.compareTo(b.date));
+    upcoming.sort((a, b) {
+      final dateCompare = a.date.compareTo(b.date);
+      if (dateCompare != 0) {
+        return dateCompare;
+      }
+      if (a.type == b.type) {
+        return 0;
+      }
+      return a.type == _PaymentPillType.project ? -1 : 1;
+    });
     return upcoming;
-  }
-
-  _UpcomingPayment? _nextRetainerPayment(DateTime reference) {
-    final today = _normalizeDate(reference);
-    final nextDates = <_UpcomingPayment>[];
-    for (final entry in _retainerUpcomingPayments(today, today.add(const Duration(days: 60)))) {
-      nextDates.add(entry);
-    }
-    if (nextDates.isEmpty) {
-      return null;
-    }
-    nextDates.sort((a, b) => a.date.compareTo(b.date));
-    return nextDates.first;
   }
 
   Iterable<_UpcomingPayment> _retainerUpcomingPayments(DateTime start, DateTime end) sync* {
@@ -1696,7 +2182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool _isActiveProject(Project project) {
-    return project.status != 'payment_received_in_full';
+    return !project.isArchived && project.status != 'payment_received_in_full';
   }
 
   List<Project> _activeProjects() {
@@ -1754,6 +2240,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       final project = _projectById(payment.projectId);
       if (project == null) {
+        return false;
+      }
+      if (project.isArchived) {
         return false;
       }
       if (project.status != 'deposit_received' &&
@@ -1950,6 +2439,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (project == null) {
         return false;
       }
+      if (project.isArchived) {
+        return false;
+      }
       if (project.status != 'deposit_received' &&
           project.status != 'payment_received_in_full') {
         return false;
@@ -2036,7 +2528,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _formatCurrency(double amount) {
-    return '€${amount.toStringAsFixed(0)}';
+    final rounded = amount.round();
+    final absolute = rounded.abs().toString();
+    final formatted = absolute.replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'),
+      (match) => '${match[1]},',
+    );
+    final prefix = rounded < 0 ? '-' : '';
+    return '€$prefix$formatted';
   }
 
   double _projectStageProgress(String stage) {
@@ -2074,6 +2573,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const Color(0xFF7AA37C);
     }
   }
+}
+
+enum _PaymentPillType { project, retainer }
+
+class _PaymentPillItem {
+  const _PaymentPillItem({
+    required this.clientId,
+    required this.clientName,
+    required this.amount,
+    required this.date,
+    required this.tagLabel,
+    required this.type,
+    this.projectId,
+  });
+
+  final String clientId;
+  final String clientName;
+  final double amount;
+  final DateTime date;
+  final String tagLabel;
+  final _PaymentPillType type;
+  final String? projectId;
 }
 
 class _UpcomingPayment {
@@ -2120,60 +2641,92 @@ class _SheetDivider extends StatelessWidget {
   }
 }
 
-class _UpcomingRetainerPaymentCard extends StatelessWidget {
-  const _UpcomingRetainerPaymentCard({
-    required this.payment,
+class _PaymentPill extends StatelessWidget {
+  const _PaymentPill({
+    required this.item,
     required this.formattedAmount,
     required this.formattedDate,
+    required this.avatarColor,
+    this.onTap,
   });
 
-  final _UpcomingPayment payment;
+  final _PaymentPillItem item;
   final String formattedAmount;
   final String formattedDate;
+  final Color avatarColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Icon(
-                Icons.calendar_today,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
+    final icon = item.type == _PaymentPillType.project
+        ? Icons.payments_outlined
+        : Icons.calendar_today_outlined;
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: avatarColor,
+                child: Icon(
+                  icon,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.clientName,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: avatarColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        item.tagLabel,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'Next retainer payment',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                    formattedAmount,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${payment.client} • $formattedDate',
+                    formattedDate,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              formattedAmount,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2186,22 +2739,29 @@ class _ClientCard extends StatelessWidget {
     required this.isRetainer,
     required this.initials,
     required this.typeLabel,
-    required this.totalAmount,
+    required this.formattedAmount,
     required this.cardColor,
+    required this.tagColor,
     required this.onTap,
+    required this.onEdit,
+    required this.onArchive,
+    required this.onDuplicate,
   });
 
   final Client client;
   final bool isRetainer;
   final String initials;
   final String typeLabel;
-  final double totalAmount;
+  final String formattedAmount;
   final Color cardColor;
+  final Color tagColor;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onArchive;
+  final VoidCallback onDuplicate;
 
   @override
   Widget build(BuildContext context) {
-    final tagColor = isRetainer ? const Color(0xFFE7DCCA) : const Color(0xFFD9E4EC);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: cardColor,
@@ -2255,7 +2815,7 @@ class _ClientCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '€${totalAmount.toStringAsFixed(0)}',
+                    formattedAmount,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -2266,6 +2826,32 @@ class _ClientCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    onEdit();
+                  } else if (value == 'archive') {
+                    onArchive();
+                  } else if (value == 'duplicate') {
+                    onDuplicate();
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Text('Edit'),
+                  ),
+                  PopupMenuItem(
+                    value: 'archive',
+                    child: Text('Archive'),
+                  ),
+                  PopupMenuItem(
+                    value: 'duplicate',
+                    child: Text('Duplicate'),
                   ),
                 ],
               ),
