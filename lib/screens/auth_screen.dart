@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/app_config.dart';
+
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
     super.key,
@@ -34,6 +36,12 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
+      _showMessage(
+        'Missing Supabase config. Set SUPABASE_URL and SUPABASE_ANON_KEY.',
+      );
+      return;
+    }
     setState(() {
       _isSending = true;
     });
@@ -49,6 +57,8 @@ class _AuthScreenState extends State<AuthScreen> {
       _showMessage('OTP sent to your email.');
     } on AuthException catch (error) {
       _showMessage(error.message);
+    } catch (error) {
+      _showMessage(_friendlyNetworkMessage(error));
     } finally {
       if (mounted) {
         setState(() {
@@ -61,6 +71,12 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _verifyOtp() async {
     if (_otpController.text.trim().length != 6) {
       _showMessage('Enter the 6-digit code.');
+      return;
+    }
+    if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
+      _showMessage(
+        'Missing Supabase config. Set SUPABASE_URL and SUPABASE_ANON_KEY.',
+      );
       return;
     }
     setState(() {
@@ -81,6 +97,8 @@ class _AuthScreenState extends State<AuthScreen> {
       widget.onAuthenticated();
     } on AuthException catch (error) {
       _showMessage(error.message);
+    } catch (error) {
+      _showMessage(_friendlyNetworkMessage(error));
     } finally {
       if (mounted) {
         setState(() {
@@ -97,6 +115,15 @@ class _AuthScreenState extends State<AuthScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  String _friendlyNetworkMessage(Object error) {
+    final message = error.toString();
+    if (message.contains('Failed host lookup') ||
+        message.contains('SocketException')) {
+      return 'Unable to reach Supabase. Check your network or SUPABASE_URL.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   @override
