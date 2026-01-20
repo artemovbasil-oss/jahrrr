@@ -2,19 +2,39 @@ class AppConfig {
   static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
+  static String get supabaseUrlResolved {
+    final trimmed = supabaseUrl.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) {
+      return trimmed;
+    }
+    return '${uri.scheme}://${uri.host}';
+  }
+
+  static String get supabaseAnonKeyResolved => supabaseAnonKey.trim();
+
   static bool get hasSupabaseConfig =>
-      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+      supabaseUrlResolved.isNotEmpty && supabaseAnonKeyResolved.isNotEmpty;
 
   static bool get hasValidSupabaseUrl {
-    if (supabaseUrl.trim().isEmpty) {
+    if (supabaseUrlResolved.isEmpty) {
       return false;
     }
-    final uri = Uri.tryParse(supabaseUrl.trim());
+    final uri = Uri.tryParse(supabaseUrlResolved);
     if (uri == null) {
       return false;
     }
     final scheme = uri.scheme.toLowerCase();
-    return (scheme == 'https' || scheme == 'http') && uri.host.isNotEmpty;
+    if (scheme != 'https') {
+      return false;
+    }
+    if (uri.host.isEmpty || !uri.host.endsWith('.supabase.co')) {
+      return false;
+    }
+    return uri.path.isEmpty || uri.path == '/';
   }
 
   static bool get hasValidSupabaseConfig =>
@@ -25,7 +45,7 @@ class AppConfig {
       return 'Missing Supabase config. Set SUPABASE_URL and SUPABASE_ANON_KEY.';
     }
     if (!hasValidSupabaseUrl) {
-      return 'Invalid SUPABASE_URL. Use a full URL like https://your-project.supabase.co.';
+      return 'Invalid SUPABASE_URL. Use https://<project-id>.supabase.co with no extra paths.';
     }
     return null;
   }
