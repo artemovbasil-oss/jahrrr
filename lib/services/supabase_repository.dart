@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/client.dart';
@@ -34,6 +35,33 @@ class SupabaseRepository {
     await _client.auth.updateUser(
       UserAttributes(data: {'name': name}),
     );
+  }
+
+  Future<Project> createProject(Project project) async {
+    final userId = _requireUserId();
+    final payload = _projectInsertPayload(project, userId);
+    try {
+      final row = await _client
+          .from('projects')
+          .insert(payload)
+          .select()
+          .single();
+      return _projectFromRow(row as Map<String, dynamic>);
+    } on PostgrestException catch (error) {
+      _logPostgrestError(
+        operation: 'projects.insert',
+        error: error,
+        payload: payload,
+      );
+      rethrow;
+    } catch (error) {
+      _logUnknownError(
+        operation: 'projects.insert',
+        error: error,
+        payload: payload,
+      );
+      rethrow;
+    }
   }
 
   Future<List<Client>> fetchClients() async {
@@ -310,6 +338,20 @@ class SupabaseRepository {
     };
   }
 
+  Map<String, dynamic> _projectInsertPayload(Project project, String userId) {
+    return {
+      'id': project.id,
+      'user_id': userId,
+      'client_id': project.clientId,
+      'title': project.title,
+      'amount': project.amount,
+      'status': project.status,
+      'deadline_date':
+          project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
+      'is_archived': project.isArchived,
+    };
+  }
+
   Map<String, dynamic> _paymentToRow(ProjectPayment payment, String userId) {
     return {
       'id': payment.id,
@@ -410,5 +452,25 @@ class SupabaseRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
+  }
+
+  void _logPostgrestError({
+    required String operation,
+    required PostgrestException error,
+    required Map<String, dynamic> payload,
+  }) {
+    debugPrint(
+      'Supabase $operation failed. message=${error.message} '
+      'code=${error.code} details=${error.details} hint=${error.hint} '
+      'payload=$payload',
+    );
+  }
+
+  void _logUnknownError({
+    required String operation,
+    required Object error,
+    required Map<String, dynamic> payload,
+  }) {
+    debugPrint('Supabase $operation failed. error=$error payload=$payload');
   }
 }
