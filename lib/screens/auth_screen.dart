@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -41,12 +44,21 @@ class _AuthScreenState extends State<AuthScreen> {
       _showMessage(configError);
       return;
     }
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _showMessage('Invalid email format.');
+      return;
+    }
     setState(() {
       _isSending = true;
     });
     try {
+      final settingsOk = await _probeSupabaseSettings();
+      if (!settingsOk) {
+        return;
+      }
       await Supabase.instance.client.auth.signInWithOtp(
-        email: _emailController.text.trim(),
+        email: email,
       );
       if (mounted) {
         setState(() {
@@ -113,6 +125,37 @@ class _AuthScreenState extends State<AuthScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<bool> _probeSupabaseSettings() async {
+    final baseUrl = AppConfig.supabaseUrlResolved;
+    if (baseUrl.isEmpty) {
+      _showMessage('SUPABASE_URL is missing.');
+      return false;
+    }
+    final settingsUri = Uri.parse('$baseUrl/auth/v1/settings');
+    debugPrint('Supabase settings probe: $settingsUri');
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(settingsUri);
+      request.headers.set('apikey', AppConfig.supabaseAnonKeyResolved);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      debugPrint('Supabase settings response: ${response.statusCode} $body');
+      if (response.statusCode >= 400) {
+        _showMessage(
+          'Supabase settings check failed (${response.statusCode}). Check SUPABASE_URL.',
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      debugPrint('Supabase settings probe failed: $error');
+      _showMessage(_friendlyNetworkMessage(error));
+      return false;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   String _friendlyNetworkMessage(Object error) {
