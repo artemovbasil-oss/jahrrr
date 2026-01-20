@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/dashboard_screen.dart';
+import 'screens/auth_gate.dart';
 
 class JahrrrApp extends StatelessWidget {
   const JahrrrApp({super.key});
@@ -54,7 +54,7 @@ class JahrrrApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const DashboardScreen(),
+      home: const AuthGate(),
     );
   }
 }
