@@ -7,6 +7,7 @@ class StatCard extends StatelessWidget {
     required this.value,
     required this.subtitle,
     required this.color,
+    required this.icon,
     this.onTap,
   });
 
@@ -14,6 +15,7 @@ class StatCard extends StatelessWidget {
   final String value;
   final String subtitle;
   final Color color;
+  final IconData icon;
   final VoidCallback? onTap;
 
   @override
@@ -27,13 +29,32 @@ class StatCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 18,
+                      color: color,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
