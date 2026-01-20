@@ -23,9 +23,18 @@ class SectionHeader extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
         ),
-        TextButton(
+        OutlinedButton.icon(
           onPressed: onActionPressed,
-          child: Text(actionLabel),
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            shape: const StadiumBorder(),
+          ),
+          icon: const Icon(
+            Icons.chevron_right,
+            size: 18,
+          ),
+          label: Text(actionLabel),
         ),
       ],
     );
