@@ -336,6 +336,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
         actions: [
           IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.notifications_none),
+          ),
+          IconButton(
             onPressed: _toggleSearch,
             icon: Icon(_isSearching ? Icons.close : Icons.search),
           ),
@@ -363,6 +367,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: activeProjectsCount.toString(),
                 subtitle: 'Across $activeProjectClientsCount clients',
                 color: Color(0xFF8CB7C9),
+                icon: Icons.folder_open,
                 onTap: () => _showActiveProjectsSheet(activeProjects),
               ),
               StatCard(
@@ -370,6 +375,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: _formatCurrency(budgetInProgress),
                 subtitle: 'Across $activeProjectsCount projects',
                 color: Color(0xFF7AA37C),
+                icon: Icons.account_balance_wallet_outlined,
                 onTap: () => _showBudgetBreakdownSheet(
                   today,
                   range30End,
@@ -380,6 +386,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: deadlinesThisWeek.toString(),
                 subtitle: 'This week',
                 color: Color(0xFFF47A64),
+                icon: Icons.event_available,
                 onTap: () => _showDeadlinesSheet(
                   _deadlineProjects(today, range7End),
                 ),
@@ -389,6 +396,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: _formatCurrency(upcomingPayments),
                 subtitle: 'This week',
                 color: Color(0xFFB8432D),
+                icon: Icons.payments_outlined,
                 onTap: () => _showUpcomingPaymentsSheet(today, range7End),
               ),
             ],
@@ -2663,7 +2671,12 @@ class _PaymentPill extends StatelessWidget {
         : Icons.calendar_today_outlined;
     return Material(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(20),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: Theme.of(context).colorScheme.surfaceVariant,
+        ),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
@@ -2672,10 +2685,10 @@ class _PaymentPill extends StatelessWidget {
           child: Row(
             children: [
               CircleAvatar(
-                backgroundColor: avatarColor,
+                backgroundColor: avatarColor.withOpacity(0.18),
                 child: Icon(
                   icon,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: avatarColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -2693,13 +2706,14 @@ class _PaymentPill extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: avatarColor,
+                        color: avatarColor.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         item.tagLabel,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                       ),
                     ),
@@ -2714,6 +2728,7 @@ class _PaymentPill extends StatelessWidget {
                     formattedAmount,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                   ),
                   const SizedBox(height: 4),
@@ -2765,8 +2780,14 @@ class _ClientCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: Theme.of(context).colorScheme.surfaceVariant,
+        ),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -2774,11 +2795,12 @@ class _ClientCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
-                backgroundColor: tagColor,
+                backgroundColor: tagColor.withOpacity(0.2),
                 child: Text(
                   initials,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                 ),
               ),
@@ -2797,13 +2819,14 @@ class _ClientCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: tagColor,
+                        color: tagColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         typeLabel.toLowerCase(),
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                       ),
                     ),
