@@ -168,7 +168,7 @@ class SupabaseRepository {
     final currentIds = clients.map((client) => client.id).toSet();
     final toDelete = existingIds.difference(currentIds).toList();
     if (toDelete.isNotEmpty) {
-      await _client.from('clients').delete().in_('id', toDelete);
+      await _client.from('clients').delete().inFilter('id', toDelete);
     }
     final payload = clients
         .map((client) => _clientToRow(client, userId))
@@ -192,7 +192,7 @@ class SupabaseRepository {
         retainerPayload.map((row) => row['client_id'] as String).toSet();
     final retainerDelete = retainerExistingIds.difference(retainerIds).toList();
     if (retainerDelete.isNotEmpty) {
-      await _client.from('retainer_settings').delete().in_(
+      await _client.from('retainer_settings').delete().inFilter(
             'client_id',
             retainerDelete,
           );
@@ -213,7 +213,7 @@ class SupabaseRepository {
     final currentIds = projects.map((project) => project.id).toSet();
     final toDelete = existingIds.difference(currentIds).toList();
     if (toDelete.isNotEmpty) {
-      await _client.from('projects').delete().in_('id', toDelete);
+      await _client.from('projects').delete().inFilter('id', toDelete);
     }
     final payload =
         projects.map((project) => _projectToRow(project, userId)).toList();
@@ -236,7 +236,7 @@ class SupabaseRepository {
     final currentIds = payments.map((payment) => payment.id).toSet();
     final toDelete = existingIds.difference(currentIds).toList();
     if (toDelete.isNotEmpty) {
-      await _client.from('project_payments').delete().in_('id', toDelete);
+      await _client.from('project_payments').delete().inFilter('id', toDelete);
     }
     final payload = payments
         .map((payment) => _paymentToRow(payment, userId))
