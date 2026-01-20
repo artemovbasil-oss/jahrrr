@@ -639,17 +639,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _persistData() async {
+  Future<bool> _persistData() async {
     try {
       await _repository.syncAll(
         clients: _clients,
         projects: _projects,
         payments: _projectPayments,
       );
+      await _loadData();
+      return true;
     } catch (_) {
       _showSnackBar(context, 'Failed to save changes.');
+      return false;
     }
-    await _loadData();
   }
 
   void _handleScroll() {
@@ -1428,8 +1430,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     });
-    await _persistData();
-    if (!mounted) {
+    final saved = await _persistData();
+    if (!saved || !mounted) {
       return;
     }
     _showSnackBar(context, 'Client added');
@@ -1490,7 +1492,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         items: eligibleClients
                             .map(
                               (client) => DropdownMenuItem(
-                                value: client.name,
+                                value: client.id,
                                 child: Text(client.name),
                               ),
                             )
@@ -1857,20 +1859,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     });
-    await _persistData();
-    if (!mounted) {
+    final saved = await _persistData();
+    if (!saved || !mounted) {
       return;
     }
     _showSnackBar(context, 'Payment added');
   }
 
   Future<void> _addProject() async {
-    final clientName = _selectedProjectClient;
-    if (clientName == null) {
+    final clientId = _selectedProjectClient;
+    if (clientId == null) {
       _showSnackBar(context, 'Select a client');
       return;
     }
-    final client = _clients.firstWhere((item) => item.name == clientName);
+    final client = _clients.firstWhere((item) => item.id == clientId);
     if (_isRetainerClient(client)) {
       _showSnackBar(context, 'Retainer clients cannot have projects');
       return;
@@ -1897,8 +1899,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     });
-    await _persistData();
-    if (!mounted) {
+    final saved = await _persistData();
+    if (!saved || !mounted) {
       return;
     }
     _showSnackBar(context, 'Project added');
