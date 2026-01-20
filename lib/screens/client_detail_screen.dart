@@ -15,6 +15,7 @@ class ClientDetailScreen extends StatefulWidget {
     this.openRetainerSettings = false,
     required this.onDeleteClient,
     required this.onUpdateClient,
+    required this.onDuplicateClient,
     required this.onUpdatePayment,
     required this.onDeletePayment,
     required this.onDuplicateProject,
@@ -28,6 +29,11 @@ class ClientDetailScreen extends StatefulWidget {
   final bool openRetainerSettings;
   final Future<void> Function() onDeleteClient;
   final Future<void> Function(Client updatedClient) onUpdateClient;
+  final Future<Client> Function(
+    Client client,
+    String newName,
+    bool copyWithAllSettings,
+  ) onDuplicateClient;
   final Future<void> Function(ProjectPayment oldPayment, ProjectPayment updatedPayment)
       onUpdatePayment;
   final Future<void> Function(ProjectPayment payment) onDeletePayment;
@@ -64,7 +70,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     _payments = List<ProjectPayment>.from(widget.payments);
     if (widget.openRetainerSettings && _isRetainerClient(_client)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _editSalary();
+        _editClient();
       });
     }
   }
@@ -84,35 +90,34 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_client.name),
-        actions: _isRetainerClient(_client)
-            ? [
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'edit-salary') {
-                      _editSalary();
-                    } else if (value == 'delete') {
-                      _confirmDeleteClient();
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'edit-salary',
-                      child: Text('Edit salary'),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Archive client'),
-                    ),
-                  ],
-                ),
-              ]
-            : [
-                IconButton(
-                  tooltip: 'Archive client',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: _confirmDeleteClient,
-                ),
-              ],
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_horiz),
+            onSelected: (value) {
+              if (value == 'edit') {
+                _editClient();
+              } else if (value == 'archive') {
+                _confirmDeleteClient();
+              } else if (value == 'duplicate') {
+                _duplicateClient();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: Text('Edit'),
+              ),
+              PopupMenuItem(
+                value: 'archive',
+                child: Text('Archive'),
+              ),
+              PopupMenuItem(
+                value: 'duplicate',
+                child: Text('Duplicate'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -262,61 +267,229 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     Navigator.of(context).pop();
   }
 
-  Future<void> _editSalary() async {
-    final currentAmount = _client.retainerSettings?.amount ?? 0;
-    final salaryController = TextEditingController(text: currentAmount.toStringAsFixed(0));
-    final updated = await showDialog<double>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit salary'),
-        content: TextField(
-          controller: salaryController,
-          decoration: const InputDecoration(labelText: 'Salary (€)'),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(null),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsed =
-                  double.tryParse(salaryController.text.trim().replaceAll(',', '.'));
-              if (parsed == null || parsed <= 0) {
-                return;
-              }
-              Navigator.of(dialogContext).pop(parsed);
-            },
-            child: const Text('Update'),
-          ),
-        ],
-      ),
+  Future<void> _editClient() async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(text: _client.name);
+    final contactController =
+        TextEditingController(text: _client.contactPerson ?? '');
+    final phoneController = TextEditingController(text: _client.phone ?? '');
+    final emailController = TextEditingController(text: _client.email ?? '');
+    final telegramController = TextEditingController(text: _client.telegram ?? '');
+    final amountController = TextEditingController(
+      text: _isRetainerClient(_client)
+          ? (_client.retainerSettings?.amount ?? 0).toStringAsFixed(0)
+          : (_client.plannedBudget?.toStringAsFixed(0) ?? ''),
     );
-    if (updated == null) {
+    var selectedFrequency = _client.retainerSettings?.frequency;
+    DateTime? selectedDate = _client.retainerSettings?.nextPaymentDate;
+
+    final shouldUpdate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit client'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(labelText: 'Client name'),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter a client name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: amountController,
+                        decoration: InputDecoration(
+                          labelText: _isRetainerClient(_client)
+                              ? 'Retainer amount (€)'
+                              : 'Planned budget (€) (optional)',
+                        ),
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          final trimmed = value?.trim() ?? '';
+                          if (_isRetainerClient(_client)) {
+                            if (trimmed.isEmpty) {
+                              return 'Enter a retainer amount';
+                            }
+                            final parsed =
+                                double.tryParse(trimmed.replaceAll(',', '.'));
+                            if (parsed == null || parsed <= 0) {
+                              return 'Enter a valid amount';
+                            }
+                          } else if (trimmed.isNotEmpty) {
+                            final parsed =
+                                double.tryParse(trimmed.replaceAll(',', '.'));
+                            if (parsed == null || parsed < 0) {
+                              return 'Enter a valid budget';
+                            }
+                          }
+                          return null;
+                        },
+                      ),
+                      if (_isRetainerClient(_client)) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: selectedFrequency,
+                          decoration:
+                              const InputDecoration(labelText: 'Payment frequency'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'once_month',
+                              child: Text('Once a month'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'twice_month',
+                              child: Text('Twice a month'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() {
+                              selectedFrequency = value;
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Select a payment frequency';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Next payment date'),
+                          subtitle: Text(
+                            selectedDate == null
+                                ? 'Select a date'
+                                : _formatDate(selectedDate!),
+                          ),
+                          trailing: const Icon(Icons.calendar_today_outlined),
+                          onTap: () async {
+                            final now = DateTime.now();
+                            final picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: selectedDate ?? now,
+                              firstDate: now,
+                              lastDate: DateTime(now.year + 5),
+                            );
+                            if (picked == null) {
+                              return;
+                            }
+                            setDialogState(() {
+                              selectedDate = picked;
+                            });
+                          },
+                        ),
+                        if (selectedDate == null)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Select a payment date',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                            ),
+                          ),
+                      ],
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: contactController,
+                        decoration:
+                            const InputDecoration(labelText: 'Contact person'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: phoneController,
+                        decoration: const InputDecoration(labelText: 'Phone'),
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: emailController,
+                        decoration: const InputDecoration(labelText: 'Email'),
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: telegramController,
+                        decoration: const InputDecoration(labelText: 'Telegram'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final isValid = formKey.currentState?.validate() ?? false;
+                    if (_isRetainerClient(_client) && selectedDate == null) {
+                      setDialogState(() {});
+                      return;
+                    }
+                    if (!isValid) {
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldUpdate != true) {
       return;
     }
-    final updatedSettings = _client.retainerSettings == null
+
+    final amountValue = amountController.text.trim();
+    final parsedAmount = amountValue.isEmpty
         ? null
-        : RetainerSettings(
-            amount: updated,
-            frequency: _client.retainerSettings!.frequency,
-            nextPaymentDate: _client.retainerSettings!.nextPaymentDate,
-            isEnabled: _client.retainerSettings!.isEnabled,
-            updatedAt: DateTime.now(),
-          );
+        : double.tryParse(amountValue.replaceAll(',', '.'));
+    final now = DateTime.now();
+    final updatedSettings = _isRetainerClient(_client)
+        ? RetainerSettings(
+            amount: parsedAmount ?? 0,
+            frequency: selectedFrequency ?? 'once_month',
+            nextPaymentDate: selectedDate ?? now,
+            isEnabled: _client.retainerSettings?.isEnabled ?? true,
+            updatedAt: now,
+          )
+        : null;
     final updatedClient = Client(
       id: _client.id,
-      name: _client.name,
+      name: nameController.text.trim(),
       type: _client.type,
-      contactPerson: _client.contactPerson,
-      phone: _client.phone,
-      email: _client.email,
-      telegram: _client.telegram,
-      plannedBudget: _client.plannedBudget,
+      contactPerson: contactController.text.trim().isEmpty
+          ? null
+          : contactController.text.trim(),
+      phone: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
+      email: emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+      telegram:
+          telegramController.text.trim().isEmpty ? null : telegramController.text.trim(),
+      plannedBudget: _isRetainerClient(_client) ? null : parsedAmount,
       isArchived: _client.isArchived,
       createdAt: _client.createdAt,
-      updatedAt: DateTime.now(),
+      updatedAt: now,
       retainerSettings: updatedSettings,
     );
     await widget.onUpdateClient(updatedClient);
@@ -326,6 +499,76 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     setState(() {
       _client = updatedClient;
     });
+  }
+
+  Future<void> _duplicateClient() async {
+    final nameController = TextEditingController();
+    var copyWithAllSettings = true;
+    var isValid = false;
+
+    final shouldDuplicate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Duplicate client'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: copyWithAllSettings,
+                    title: const Text('Copy with all settings?'),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        copyWithAllSettings = value ?? true;
+                      });
+                    },
+                  ),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'New name'),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        isValid = value.trim().isNotEmpty;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(dialogContext).pop(true)
+                      : null,
+                  child: const Text('Create copy'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldDuplicate != true) {
+      return;
+    }
+    final newName = nameController.text.trim();
+    if (newName.isEmpty) {
+      return;
+    }
+    await widget.onDuplicateClient(_client, newName, copyWithAllSettings);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Client duplicated')),
+    );
   }
 
   Future<void> _duplicateProject(Project project) async {
@@ -346,7 +589,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     value: copyWithAllSettings,
-                    title: const Text('Copy with all settings'),
+                    title: const Text('Copy with all settings?'),
                     onChanged: (value) {
                       setDialogState(() {
                         copyWithAllSettings = value ?? true;
@@ -1009,22 +1252,31 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
       ),
     );
   }
@@ -1211,6 +1463,7 @@ class _ProjectRow extends StatelessWidget {
           ),
         ),
         PopupMenuButton<String>(
+          icon: const Icon(Icons.more_horiz),
           onSelected: (value) {
             if (value == 'edit') {
               onEdit();
@@ -1292,11 +1545,12 @@ class _PaymentRow extends StatelessWidget {
           ),
           if (onEdit != null || onDelete != null || onMarkPaid != null)
             PopupMenuButton<String>(
+              icon: const Icon(Icons.more_horiz),
               onSelected: (value) {
                 if (value == 'edit') {
                   onEdit?.call();
-                } else if (value == 'paid') {
-                  onMarkPaid?.call();
+            } else if (value == 'paid') {
+              onMarkPaid?.call();
                 } else if (value == 'delete') {
                   onDelete?.call();
                 }
