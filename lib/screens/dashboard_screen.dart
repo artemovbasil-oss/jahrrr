@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -390,6 +391,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: _toggleSearch,
             icon: Icon(_isSearching ? Icons.close : Icons.search),
           ),
+          if (kDebugMode)
+            IconButton(
+              tooltip: 'Debug insert project',
+              onPressed: _debugInsertProject,
+              icon: const Icon(Icons.bug_report_outlined),
+            ),
           const SizedBox(width: 8),
         ],
       ),
@@ -1872,45 +1879,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _showSnackBar(context, 'Select a client');
       return;
     }
+    if (!_isValidUuid(clientId)) {
+      _showSnackBar(context, 'Selected client ID is invalid.');
+      return;
+    }
     final client = _clients.firstWhere((item) => item.id == clientId);
     if (_isRetainerClient(client)) {
       _showSnackBar(context, 'Retainer clients cannot have projects');
       return;
     }
     final stage = _selectedProjectStage ?? 'first_meeting';
+    if (!_projectStageLabels.containsKey(stage)) {
+      _showSnackBar(context, 'Select a valid project stage');
+      return;
+    }
     final deadline = _selectedProjectDeadline;
     final amount = double.tryParse(
           _projectAmountController.text.trim().replaceAll(',', '.'),
         ) ??
         0;
-    final now = DateTime.now();
-    setState(() {
-      _projects.add(
-        Project(
-          id: _generateId(),
-          clientId: client.id,
-          title: _projectNameController.text.trim(),
-          amount: amount,
-          status: stage,
-          isArchived: false,
-          deadlineDate: deadline,
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
-    });
-    final saved = await _persistData();
-    if (!saved || !mounted) {
+    if (amount <= 0) {
+      _showSnackBar(context, 'Enter a valid project amount');
       return;
     }
-    _showSnackBar(context, 'Project added');
+    final title = _projectNameController.text.trim();
+    if (title.isEmpty) {
+      _showSnackBar(context, 'Enter a project name');
+      return;
+    }
+    final now = DateTime.now();
+    final newProject = Project(
+      id: _generateId(),
+      clientId: client.id,
+      title: title,
+      amount: amount,
+      status: stage,
+      isArchived: false,
+      deadlineDate: deadline,
+      createdAt: now,
+      updatedAt: now,
+    );
+    try {
+      final saved = await _repository.createProject(newProject);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _projects.add(saved);
+      });
+      _showSnackBar(context, 'Project added');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar(context, _formatInsertError('project', error));
+    }
   }
 
   Future<void> _addProjectFromDetails(Project project) async {
-    setState(() {
-      _projects.add(project);
-    });
-    await _persistData();
+    try {
+      final saved = await _repository.createProject(project);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _projects.add(saved);
+      });
+      _showSnackBar(context, 'Project added');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar(context, _formatInsertError('project', error));
+    }
   }
 
   Future<void> _archiveProject(Project project) async {
@@ -2372,6 +2413,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _generateId() {
     return const Uuid().v4();
+  }
+
+  bool _isValidUuid(String value) {
+    final uuidRegex = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-'
+      r'[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+    );
+    return uuidRegex.hasMatch(value);
+  }
+
+  String _formatInsertError(String resource, Object error) {
+    return 'Failed to create $resource: $error';
+  }
+
+  Future<void> _debugInsertProject() async {
+    if (!kDebugMode) {
+      return;
+    }
+    final eligibleClients = _projectEligibleClients();
+    if (eligibleClients.isEmpty) {
+      _showSnackBar(context, 'No eligible clients available for debug insert.');
+      return;
+    }
+    final client = eligibleClients.first;
+    final now = DateTime.now();
+    final project = Project(
+      id: _generateId(),
+      clientId: client.id,
+      title: 'Debug project ${now.toIso8601String()}',
+      amount: 1,
+      status: 'first_meeting',
+      isArchived: false,
+      deadlineDate: null,
+      createdAt: now,
+      updatedAt: now,
+    );
+    try {
+      final saved = await _repository.createProject(project);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _projects.add(saved);
+      });
+      _showSnackBar(context, 'Debug project inserted.');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar(context, _formatInsertError('debug project', error));
+    }
   }
 
   void _showActiveProjectsSheet(List<Project> projects) {
