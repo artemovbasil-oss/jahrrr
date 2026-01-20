@@ -14,7 +14,16 @@ flutter pub get
 3. Run the app:
 
 ```bash
-flutter run
+flutter run --dart-define=SUPABASE_URL=your-project-url --dart-define=SUPABASE_ANON_KEY=your-anon-key
+```
+
+## Supabase configuration
+
+The app uses Supabase for authentication and storage. Provide the URL and anon key via `--dart-define` (do not commit keys).
+
+```bash
+flutter run --dart-define=SUPABASE_URL=https://xyzcompany.supabase.co \\
+  --dart-define=SUPABASE_ANON_KEY=your-anon-key
 ```
 
 ## UX direction

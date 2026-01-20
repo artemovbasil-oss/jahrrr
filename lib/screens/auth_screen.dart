@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
-
-import '../models/user_profile.dart';
-import '../services/app_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
     super.key,
     required this.onAuthenticated,
-    required this.initialProfile,
   });
 
   final VoidCallback onAuthenticated;
-  final UserProfile? initialProfile;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -21,70 +17,83 @@ class _AuthScreenState extends State<AuthScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmController = TextEditingController();
-  bool _isRegistering = true;
-  bool _isSubmitting = false;
-  bool _obscurePassword = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _isRegistering = widget.initialProfile == null;
-    if (widget.initialProfile != null) {
-      _emailController.text = widget.initialProfile!.email;
-    }
-  }
+  final TextEditingController _otpController = TextEditingController();
+  bool _isSending = false;
+  bool _isVerifying = false;
+  bool _otpSent = false;
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _passwordController.dispose();
-    _confirmController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
     setState(() {
-      _isSubmitting = true;
+      _isSending = true;
     });
     try {
-      if (_isRegistering) {
-        final profile = UserProfile(
-          name: _nameController.text.trim(),
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-          updatedAt: DateTime.now(),
-        );
-        await AppStorage.saveUserProfile(profile);
-        await AppStorage.setLoggedIn(true);
-        widget.onAuthenticated();
-      } else {
-        final profile = widget.initialProfile;
-        if (profile == null) {
-          _showMessage('No account found. Please sign up.');
-        } else if (_emailController.text.trim() != profile.email ||
-            _passwordController.text.trim() != profile.password) {
-          _showMessage('Invalid email or password.');
-        } else {
-          await AppStorage.setLoggedIn(true);
-          widget.onAuthenticated();
-        }
+      await Supabase.instance.client.auth.signInWithOtp(
+        email: _emailController.text.trim(),
+      );
+      if (mounted) {
+        setState(() {
+          _otpSent = true;
+        });
       }
+      _showMessage('OTP sent to your email.');
+    } on AuthException catch (error) {
+      _showMessage(error.message);
     } finally {
       if (mounted) {
         setState(() {
-          _isSubmitting = false;
+          _isSending = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    if (_otpController.text.trim().length != 6) {
+      _showMessage('Enter the 6-digit code.');
+      return;
+    }
+    setState(() {
+      _isVerifying = true;
+    });
+    try {
+      final response = await Supabase.instance.client.auth.verifyOTP(
+        email: _emailController.text.trim(),
+        token: _otpController.text.trim(),
+        type: OtpType.email,
+      );
+      final name = _nameController.text.trim();
+      if (response.user != null && name.isNotEmpty) {
+        await Supabase.instance.client.auth.updateUser(
+          UserAttributes(data: {'name': name}),
+        );
+      }
+      widget.onAuthenticated();
+    } on AuthException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isVerifying = false;
         });
       }
     }
   }
 
   void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -92,6 +101,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = _isSending || _isVerifying;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -110,57 +120,25 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _isRegistering
-                        ? 'Create your workspace in minutes.'
-                        : 'Welcome back. Let\'s pick up where you left off.',
+                    'Sign in or create your workspace using email OTP.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                  ),
-                  const SizedBox(height: 24),
-                  ToggleButtons(
-                    isSelected: [_isRegistering, !_isRegistering],
-                    onPressed: (index) {
-                      setState(() {
-                        _isRegistering = index == 0;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    children: const [
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                        child: Text('Sign up'),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                        child: Text('Sign in'),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 24),
                   Form(
                     key: _formKey,
                     child: Column(
                       children: [
-                        if (_isRegistering)
-                          TextFormField(
-                            controller: _nameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Full name',
-                              hintText: 'Alex Johnson',
-                            ),
-                            textInputAction: TextInputAction.next,
-                            validator: (value) {
-                              if (!_isRegistering) {
-                                return null;
-                              }
-                              if (value == null || value.trim().length < 2) {
-                                return 'Add your name';
-                              }
-                              return null;
-                            },
+                        TextFormField(
+                          controller: _nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Full name (optional)',
+                            hintText: 'Alex Johnson',
                           ),
-                        if (_isRegistering) const SizedBox(height: 16),
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 16),
                         TextFormField(
                           controller: _emailController,
                           decoration: const InputDecoration(
@@ -178,79 +156,43 @@ class _AuthScreenState extends State<AuthScreen> {
                           },
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _passwordController,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            hintText: 'At least 8 characters',
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                            ),
-                          ),
-                          obscureText: _obscurePassword,
-                          textInputAction:
-                              _isRegistering ? TextInputAction.next : TextInputAction.done,
-                          validator: (value) {
-                            if (value == null || value.trim().length < 8) {
-                              return 'Password must be at least 8 characters';
-                            }
-                            return null;
-                          },
-                        ),
-                        if (_isRegistering) const SizedBox(height: 16),
-                        if (_isRegistering)
+                        if (_otpSent)
                           TextFormField(
-                            controller: _confirmController,
+                            controller: _otpController,
                             decoration: const InputDecoration(
-                              labelText: 'Confirm password',
+                              labelText: '6-digit code',
                             ),
-                            obscureText: _obscurePassword,
+                            keyboardType: TextInputType.number,
                             textInputAction: TextInputAction.done,
-                            validator: (value) {
-                              if (!_isRegistering) {
-                                return null;
-                              }
-                              if (value != _passwordController.text) {
-                                return 'Passwords do not match';
-                              }
-                              return null;
-                            },
                           ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: isLoading
+                                ? null
+                                : _otpSent
+                                    ? _verifyOtp
+                                    : _sendOtp,
+                            child: isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Text(_otpSent ? 'Verify code' : 'Send code'),
+                          ),
+                        ),
+                        if (_otpSent) ...[
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: isLoading ? null : _sendOtp,
+                            child: const Text('Resend code'),
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _isSubmitting ? null : _submit,
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(_isRegistering ? 'Create account' : 'Sign in'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_isRegistering)
-                    Text(
-                      'By continuing, you agree to keep your export backup secure.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
                 ],
               ),
             ),
