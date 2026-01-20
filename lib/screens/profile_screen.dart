@@ -3,13 +3,11 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/user_profile.dart';
-import '../services/app_storage.dart';
 import '../services/supabase_repository.dart';
 import '../widgets/user_avatar.dart';
 
@@ -42,24 +40,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _savingProfile = false;
   bool _exporting = false;
   bool _importing = false;
-  bool _appLockEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.profile?.name ?? '');
     _emailController = TextEditingController(text: widget.profile?.email ?? '');
-    _loadAppLock();
-  }
-
-  Future<void> _loadAppLock() async {
-    final enabled = await AppStorage.isAppLockEnabled();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _appLockEnabled = enabled;
-    });
   }
 
   @override
@@ -92,25 +78,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     }
-  }
-
-  Future<void> _toggleAppLock(bool value) async {
-    final localAuth = LocalAuthentication();
-    if (value) {
-      final supported = await localAuth.isDeviceSupported();
-      if (!supported) {
-        _showSnackBar('Biometrics or device PIN not available.');
-        return;
-      }
-    }
-    await AppStorage.setAppLockEnabled(value);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _appLockEnabled = value;
-    });
-    _showSnackBar(value ? 'App lock enabled.' : 'App lock disabled.');
   }
 
   Future<void> _exportData() async {
@@ -309,20 +276,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Security',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            value: _appLockEnabled,
-            onChanged: _toggleAppLock,
-            title: const Text('Enable biometric app lock'),
-            subtitle: const Text('Require biometrics or device PIN on resume.'),
           ),
           const SizedBox(height: 24),
           Text(
