@@ -1,15 +1,13 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/client.dart';
 import '../models/project.dart';
 import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
 import '../models/user_profile.dart';
-import '../services/app_storage.dart';
+import '../services/supabase_repository.dart';
 import '../widgets/section_header.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/user_avatar.dart';
@@ -19,9 +17,11 @@ import 'profile_screen.dart';
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
+    required this.repository,
     required this.onLoggedOut,
   });
 
+  final SupabaseRepository repository;
   final VoidCallback onLoggedOut;
 
   @override
@@ -82,6 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
   UserProfile? _profile;
+  late final SupabaseRepository _repository;
 
   final List<Client> _clients = [];
   final List<Project> _projects = [];
@@ -89,6 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository;
     _packageInfoFuture = PackageInfo.fromPlatform();
     _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
@@ -559,7 +561,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final profile = await AppStorage.loadUserProfile();
+    final profile = _repository.currentUserProfile();
     if (!mounted) {
       return;
     }
@@ -571,7 +573,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _openProfile() async {
     final result = await Navigator.of(context).push<ProfileResult>(
       MaterialPageRoute(
-        builder: (context) => ProfileScreen(profile: _profile),
+        builder: (context) => ProfileScreen(
+          profile: _profile,
+          repository: _repository,
+        ),
       ),
     );
 
@@ -590,51 +595,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+    });
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final clientsData = prefs.getString('clients');
-      final projectsData = prefs.getString('projects');
-      final paymentsData = prefs.getString('projectPayments');
-      final legacyPaymentsData = prefs.getString('payments');
-      if (clientsData != null) {
-        final decoded = jsonDecode(clientsData) as List<dynamic>;
+      final clients = await _repository.fetchClients();
+      final projects = await _repository.fetchProjects();
+      final payments = await _repository.fetchProjectPayments();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
         _clients
           ..clear()
-          ..addAll(
-            decoded
-                .whereType<Map<String, dynamic>>()
-                .map(Client.fromJson),
-          );
-      }
-      if (projectsData != null) {
-        final decoded = jsonDecode(projectsData) as List<dynamic>;
+          ..addAll(clients);
         _projects
           ..clear()
-          ..addAll(
-            decoded
-                .whereType<Map<String, dynamic>>()
-                .map(Project.fromJson),
-          );
-      }
-      if (paymentsData != null) {
-        final decoded = jsonDecode(paymentsData) as List<dynamic>;
+          ..addAll(projects);
         _projectPayments
           ..clear()
-          ..addAll(
-            decoded
-                .whereType<Map<String, dynamic>>()
-                .map(ProjectPayment.fromJson),
-          );
-      } else if (legacyPaymentsData != null) {
-        final decoded = jsonDecode(legacyPaymentsData) as List<dynamic>;
-        _projectPayments
-          ..clear()
-          ..addAll(_migrateLegacyPayments(decoded));
+          ..addAll(payments);
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
       }
-    } catch (_) {
-      _clients.clear();
-      _projects.clear();
-      _projectPayments.clear();
+      setState(() {
+        _clients.clear();
+        _projects.clear();
+        _projectPayments.clear();
+      });
+      _showSnackBar(context, 'Failed to load data.');
     } finally {
       if (!mounted) {
         return;
@@ -646,19 +640,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _persistData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      'clients',
-      jsonEncode(_clients.map((client) => client.toJson()).toList()),
-    );
-    await prefs.setString(
-      'projects',
-      jsonEncode(_projects.map((project) => project.toJson()).toList()),
-    );
-    await prefs.setString(
-      'projectPayments',
-      jsonEncode(_projectPayments.map((payment) => payment.toJson()).toList()),
-    );
+    try {
+      await _repository.syncAll(
+        clients: _clients,
+        projects: _projects,
+        payments: _projectPayments,
+      );
+    } catch (_) {
+      _showSnackBar(context, 'Failed to save changes.');
+    }
+    await _loadData();
   }
 
   void _handleScroll() {
@@ -2378,54 +2369,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _generateId() {
-    return DateTime.now().microsecondsSinceEpoch.toString();
-  }
-
-  List<ProjectPayment> _migrateLegacyPayments(List<dynamic> decoded) {
-    final migrated = <ProjectPayment>[];
-    for (final entry in decoded.whereType<Map<String, dynamic>>()) {
-      final stage = entry['stage'] as String? ?? '';
-      if (stage.toLowerCase().contains('retainer')) {
-        continue;
-      }
-      final clientName = entry['client'] as String? ?? '';
-      if (clientName.isEmpty) {
-        continue;
-      }
-      final client = _clients.cast<Client?>().firstWhere(
-            (item) => item?.name == clientName,
-            orElse: () => null,
-          );
-      final project = _projects.cast<Project?>().firstWhere(
-            (item) =>
-                item?.clientId == client?.id || item?.clientId == clientName,
-            orElse: () => null,
-          );
-      if (project == null) {
-        continue;
-      }
-      final kind = switch (stage.toLowerCase()) {
-        'deposit' => 'deposit',
-        'milestone' => 'milestone',
-        'final payment' => 'final',
-        _ => 'other',
-      };
-      final date = DateTime.tryParse(entry['date'] as String? ?? '') ?? DateTime.now();
-      migrated.add(
-        ProjectPayment(
-          id: _generateId(),
-          projectId: project.id,
-          amount: (entry['amount'] as num?)?.toDouble() ?? 0,
-          kind: kind,
-          status: 'paid',
-          dueDate: null,
-          paidDate: date,
-          createdAt: date,
-          updatedAt: date,
-        ),
-      );
-    }
-    return migrated;
+    return const Uuid().v4();
   }
 
   void _showActiveProjectsSheet(List<Project> projects) {

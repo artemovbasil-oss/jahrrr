@@ -1,10 +1,16 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/user_profile.dart';
 import '../services/app_storage.dart';
+import '../services/supabase_repository.dart';
 import '../widgets/user_avatar.dart';
 
 enum ProfileResult {
@@ -18,9 +24,11 @@ class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
     required this.profile,
+    required this.repository,
   });
 
   final UserProfile? profile;
+  final SupabaseRepository repository;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -28,30 +36,36 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final GlobalKey<FormState> _profileFormKey = GlobalKey<FormState>();
-  final GlobalKey<FormState> _passwordFormKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
-  final TextEditingController _currentPasswordController = TextEditingController();
-  final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _savingProfile = false;
-  bool _savingPassword = false;
+  bool _exporting = false;
+  bool _importing = false;
+  bool _appLockEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.profile?.name ?? '');
     _emailController = TextEditingController(text: widget.profile?.email ?? '');
+    _loadAppLock();
+  }
+
+  Future<void> _loadAppLock() async {
+    final enabled = await AppStorage.isAppLockEnabled();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _appLockEnabled = enabled;
+    });
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _currentPasswordController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -62,125 +76,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _savingProfile = true;
     });
-    final existingPassword = widget.profile?.password ?? '';
-    final profile = UserProfile(
-      name: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      password: existingPassword,
-      updatedAt: DateTime.now(),
-    );
-    await AppStorage.saveUserProfile(profile);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _savingProfile = false;
-    });
-    _showSnackBar('Profile updated.');
-    Navigator.of(context).pop(ProfileResult.updated);
-  }
-
-  Future<void> _changePassword() async {
-    if (!_passwordFormKey.currentState!.validate()) {
-      return;
-    }
-    setState(() {
-      _savingPassword = true;
-    });
-    final profile = widget.profile;
-    if (profile == null) {
-      _showSnackBar('Create an account first.');
-    } else if (_currentPasswordController.text.trim() != profile.password) {
-      _showSnackBar('Current password is incorrect.');
-    } else {
-      final updated = UserProfile(
-        name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        password: _newPasswordController.text.trim(),
-        updatedAt: DateTime.now(),
-      );
-      await AppStorage.saveUserProfile(updated);
+    try {
+      await widget.repository.updateProfileName(_nameController.text.trim());
       if (!mounted) {
         return;
       }
-      _showSnackBar('Password updated.');
+      _showSnackBar('Profile updated.');
       Navigator.of(context).pop(ProfileResult.updated);
-    }
-    if (mounted) {
-      setState(() {
-        _savingPassword = false;
-      });
+    } on AuthException catch (error) {
+      _showSnackBar(error.message);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingProfile = false;
+        });
+      }
     }
   }
 
-  Future<void> _exportData() async {
-    final data = await AppStorage.exportData();
-    final prettyJson = const JsonEncoder.withIndent('  ').convert(data);
+  Future<void> _toggleAppLock(bool value) async {
+    final localAuth = LocalAuthentication();
+    if (value) {
+      final supported = await localAuth.isDeviceSupported();
+      if (!supported) {
+        _showSnackBar('Biometrics or device PIN not available.');
+        return;
+      }
+    }
+    await AppStorage.setAppLockEnabled(value);
     if (!mounted) {
       return;
     }
+    setState(() {
+      _appLockEnabled = value;
+    });
+    _showSnackBar(value ? 'App lock enabled.' : 'App lock disabled.');
+  }
 
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Export backup'),
-        content: SingleChildScrollView(
-          child: SelectableText(prettyJson),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: prettyJson));
-              if (context.mounted) {
-                Navigator.of(context).pop();
-              }
-              if (mounted) {
-                _showSnackBar('Export copied to clipboard.');
-              }
-            },
-            child: const Text('Copy'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _exportData() async {
+    setState(() {
+      _exporting = true;
+    });
+    try {
+      final data = await widget.repository.exportData();
+      final prettyJson = const JsonEncoder.withIndent('  ').convert(data);
+      final directory = await getTemporaryDirectory();
+      final fileName =
+          'jahrrr-backup-${DateTime.now().toIso8601String()}.json';
+      final file = File('${directory.path}/$fileName');
+      await file.writeAsString(prettyJson);
+      await Share.shareXFiles([XFile(file.path)], text: 'Jahrrr CRM backup');
+      if (mounted) {
+        _showSnackBar('Backup exported.');
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnackBar('Export failed.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exporting = false;
+        });
+      }
+    }
   }
 
   Future<void> _importData() async {
-    final controller = TextEditingController();
-    final result = await showDialog<String?>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Import backup'),
-        content: TextField(
-          controller: controller,
-          maxLines: 8,
-          decoration: const InputDecoration(
-            hintText: 'Paste the exported JSON here',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == null || result.trim().isEmpty) {
-      return;
-    }
-
+    setState(() {
+      _importing = true;
+    });
     try {
-      await AppStorage.importData(result.trim());
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (result == null || result.files.single.path == null) {
+        return;
+      }
+      final raw = await File(result.files.single.path!).readAsString();
+      final mode = await _askImportMode();
+      if (mode == null) {
+        return;
+      }
+      await widget.repository.importData(raw, mode: mode);
       if (!mounted) {
         return;
       }
@@ -190,11 +169,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         _showSnackBar('Import failed. Check the JSON format.');
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _importing = false;
+        });
+      }
     }
   }
 
+  Future<ImportMode?> _askImportMode() async {
+    return showDialog<ImportMode>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Import mode'),
+        content: const Text(
+          'Choose how to apply the imported data. Replace deletes all existing '
+          'rows before importing. Merge upserts by id.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(ImportMode.merge),
+            child: const Text('Merge'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(ImportMode.replace),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _logout() async {
-    await AppStorage.setLoggedIn(false);
+    await Supabase.instance.client.auth.signOut();
     if (!mounted) {
       return;
     }
@@ -239,7 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      profile?.email ?? 'No email set',
+                      profile?.email ?? '',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
@@ -251,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Account details',
+            'Profile details',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -263,28 +275,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Full name'),
-                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name',
+                  ),
                   validator: (value) {
                     if (value == null || value.trim().length < 2) {
-                      return 'Enter at least 2 characters';
+                      return 'Add your name';
                     }
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null ||
-                        !RegExp(r'^.+@.+\..+$').hasMatch(value.trim())) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
+                  enabled: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                  ),
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -293,11 +300,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onPressed: _savingProfile ? null : _saveProfile,
                     child: _savingProfile
                         ? const SizedBox(
-                            width: 20,
                             height: 20,
+                            width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Save profile'),
+                        : const Text('Save changes'),
                   ),
                 ),
               ],
@@ -305,126 +312,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Change password',
+            'Security',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
           ),
           const SizedBox(height: 12),
-          Form(
-            key: _passwordFormKey,
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _currentPasswordController,
-                  decoration: const InputDecoration(labelText: 'Current password'),
-                  obscureText: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Enter your current password';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _newPasswordController,
-                  decoration: const InputDecoration(labelText: 'New password'),
-                  obscureText: true,
-                  validator: (value) {
-                    if (value == null || value.trim().length < 8) {
-                      return 'Use at least 8 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _confirmPasswordController,
-                  decoration: const InputDecoration(labelText: 'Confirm new password'),
-                  obscureText: true,
-                  validator: (value) {
-                    if (value != _newPasswordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _savingPassword ? null : _changePassword,
-                    child: _savingPassword
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Update password'),
-                  ),
-                ),
-              ],
-            ),
+          SwitchListTile(
+            value: _appLockEnabled,
+            onChanged: _toggleAppLock,
+            title: const Text('Enable biometric app lock'),
+            subtitle: const Text('Require biometrics or device PIN on resume.'),
           ),
           const SizedBox(height: 24),
           Text(
-            'Data management',
+            'Data',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
           ),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.download),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text('Export all data'),
-                      ),
-                      TextButton(
-                        onPressed: _exportData,
-                        child: const Text('Export'),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  Row(
-                    children: [
-                      const Icon(Icons.upload),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text('Import backup'),
-                      ),
-                      TextButton(
-                        onPressed: _importData,
-                        child: const Text('Import'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text('Export data'),
+            subtitle: const Text('Save and share a JSON backup of your workspace.'),
+            trailing: _exporting
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _exporting ? null : _exportData,
+          ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('Import data'),
+            subtitle: const Text('Restore from a previously exported JSON file.'),
+            trailing: _importing
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _importing ? null : _importData,
           ),
           const SizedBox(height: 24),
-          Text(
-            'Session',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
+            child: OutlinedButton(
               onPressed: _logout,
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign out'),
+              child: const Text('Log out'),
             ),
           ),
         ],
