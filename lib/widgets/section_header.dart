@@ -23,18 +23,25 @@ class SectionHeader extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
         ),
-        OutlinedButton.icon(
+        TextButton(
           onPressed: onActionPressed,
-          style: OutlinedButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            shape: const StadiumBorder(),
+          child: Row(
+            children: [
+              Text(
+                actionLabel,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ],
           ),
-          icon: const Icon(
-            Icons.chevron_right,
-            size: 18,
-          ),
-          label: Text(actionLabel),
         ),
       ],
     );

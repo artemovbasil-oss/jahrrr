@@ -118,10 +118,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : _activeProjectClients(activeProjects).length;
     final retainerNext30 =
         _isLoading ? 0.0 : _retainerScheduledSum(today, range30End);
-    final plannedProjectSum =
-        _isLoading ? 0.0 : _plannedProjectPaymentsSum();
-    final budgetInProgress = retainerNext30 + plannedProjectSum;
-    final deadlinesThisWeek = _isLoading ? 0 : _deadlineProjects(today, range7End).length;
+    final projectBudgetSum = _isLoading ? 0.0 : _projectBudgetSum();
+    final budgetInProgress = retainerNext30 + projectBudgetSum;
+    final deadlinesThisWeek =
+        _isLoading ? 0 : _deadlineProjects(today, range7End).length;
     final upcomingPayments = _isLoading
         ? 0.0
         : _projectPaymentsPaidThisWeek(today, range7End) +
@@ -177,60 +177,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? [_buildEmptyState('Add a project to track milestones.')]
             : filteredProjects
                 .map(
-                  (project) => Card(
+                  (project) => Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  project.title,
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ),
-                              Text(
-                                project.deadlineDate == null
-                                    ? '—'
-                                    : _formatDate(project.deadlineDate!),
-                                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                project.title,
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
                                     ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _clientNameForId(project.clientId),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _projectStageLabels[project.status] ?? project.status,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                          child: LinearProgressIndicator(
-                              value: _projectStageProgress(project.status),
-                              backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                _projectStageColor(project.status),
+                            ),
+                            Text(
+                              project.deadlineDate == null
+                                  ? '—'
+                                  : _formatDate(project.deadlineDate!),
+                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _clientNameForId(project.clientId),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _projectStageColor(project.status).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                _projectStageLabels[project.status] ?? project.status,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color:
+                                          Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
                               ),
                             ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: LinearProgressIndicator(
+                            value: _projectStageProgress(project.status),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.surfaceVariant,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              _projectStageColor(project.status),
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 )
@@ -336,16 +362,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_none),
-          ),
-          IconButton(
             onPressed: _toggleSearch,
             icon: Icon(_isSearching ? Icons.close : Icons.search),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.tune),
           ),
           const SizedBox(width: 8),
         ],
@@ -365,28 +383,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
               StatCard(
                 title: 'Active projects',
                 value: activeProjectsCount.toString(),
-                subtitle: 'Across $activeProjectClientsCount clients',
-                color: Color(0xFF8CB7C9),
-                icon: Icons.folder_open,
+                tag: '$activeProjectClientsCount active clients',
+                accentColor: const Color(0xFF0369A1),
+                gradient: const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
                 onTap: () => _showActiveProjectsSheet(activeProjects),
               ),
               StatCard(
                 title: 'Budget in progress',
                 value: _formatCurrency(budgetInProgress),
-                subtitle: 'Across $activeProjectsCount projects',
-                color: Color(0xFF7AA37C),
-                icon: Icons.account_balance_wallet_outlined,
+                tag: '$activeProjectsCount projects',
+                accentColor: const Color(0xFF00A63E),
+                gradient: const [Color(0xFFF0F5E0), Color(0xFF96CA49)],
                 onTap: () => _showBudgetBreakdownSheet(
                   today,
                   range30End,
                 ),
               ),
               StatCard(
-                title: 'Deadlines this week',
+                title: 'Deadlines',
                 value: deadlinesThisWeek.toString(),
-                subtitle: 'This week',
-                color: Color(0xFFF47A64),
-                icon: Icons.event_available,
+                tag: 'This week',
+                accentColor: const Color(0xFFCA8A04),
+                gradient: const [Color(0xFFFEF3C7), Color(0xFFFDE047)],
                 onTap: () => _showDeadlinesSheet(
                   _deadlineProjects(today, range7End),
                 ),
@@ -394,9 +412,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               StatCard(
                 title: 'Upcoming payments',
                 value: _formatCurrency(upcomingPayments),
-                subtitle: 'This week',
-                color: Color(0xFFB8432D),
-                icon: Icons.payments_outlined,
+                tag: 'This week',
+                accentColor: const Color(0xFF0F0E0E),
+                gradient: const [Colors.white, Color(0xFFC0C0C0)],
                 onTap: () => _showUpcomingPaymentsSheet(today, range7End),
               ),
             ],
@@ -863,14 +881,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _contactNameController,
                         decoration: const InputDecoration(
-                          labelText: 'Contact name (optional)',
+                          labelText: 'Contact person',
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _contactPhoneController,
                         decoration: const InputDecoration(
-                          labelText: 'Phone (optional)',
+                          labelText: 'Phone',
                         ),
                         keyboardType: TextInputType.phone,
                       ),
@@ -878,7 +896,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _contactEmailController,
                         decoration: const InputDecoration(
-                          labelText: 'Email (optional)',
+                          labelText: 'Email',
                         ),
                         keyboardType: TextInputType.emailAddress,
                       ),
@@ -886,7 +904,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _contactTelegramController,
                         decoration: const InputDecoration(
-                          labelText: 'Telegram (optional)',
+                          labelText: 'Telegram',
                           hintText: '@username',
                         ),
                       ),
@@ -1075,14 +1093,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _contactNameController,
                         decoration: const InputDecoration(
-                          labelText: 'Contact name (optional)',
+                          labelText: 'Contact person',
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _contactPhoneController,
                         decoration: const InputDecoration(
-                          labelText: 'Phone (optional)',
+                          labelText: 'Phone',
                         ),
                         keyboardType: TextInputType.phone,
                       ),
@@ -1090,7 +1108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _contactEmailController,
                         decoration: const InputDecoration(
-                          labelText: 'Email (optional)',
+                          labelText: 'Email',
                         ),
                         keyboardType: TextInputType.emailAddress,
                       ),
@@ -1098,7 +1116,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _contactTelegramController,
                         decoration: const InputDecoration(
-                          labelText: 'Telegram (optional)',
+                          labelText: 'Telegram',
                           hintText: '@username',
                         ),
                       ),
@@ -1193,7 +1211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     value: copyWithAllSettings,
-                    title: const Text('Copy with all settings'),
+                    title: const Text('Copy with all settings?'),
                     onChanged: (value) {
                       setDialogState(() {
                         copyWithAllSettings = value ?? true;
@@ -1238,6 +1256,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (newName.isEmpty) {
       return;
     }
+    await _duplicateClientWithName(client, newName, copyWithAllSettings);
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar(context, 'Client duplicated');
+  }
+
+  Future<Client> _duplicateClientWithName(
+    Client client,
+    String newName,
+    bool copyWithAllSettings,
+  ) async {
     final now = DateTime.now();
     final newClientId = _generateId();
     final shouldCopyRetainer = _isRetainerClient(client) && copyWithAllSettings;
@@ -1311,10 +1341,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     });
     await _persistData();
-    if (!mounted) {
-      return;
-    }
-    _showSnackBar(context, 'Client duplicated');
+    return duplicatedClient;
   }
 
   Future<void> _addClient() async {
@@ -1978,6 +2005,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           openRetainerSettings: openRetainerSettings,
           onDeleteClient: () => _archiveClient(client),
           onUpdateClient: _updateClient,
+          onDuplicateClient: (source, newName, copyWithAllSettings) =>
+              _duplicateClientWithName(source, newName, copyWithAllSettings),
           onUpdatePayment: _updateProjectPayment,
           onDeletePayment: _deleteProjectPayment,
           onDuplicateProject: _duplicateProject,
@@ -2009,9 +2038,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Color _clientCardColor(BuildContext context, Client client) {
-    return _isRetainerClient(client)
-        ? const Color(0xFFF6F2EA)
-        : const Color(0xFFF1F4F6);
+    final base = Theme.of(context).colorScheme.surface;
+    final tint = _clientTagColor(client);
+    return Color.alphaBlend(tint.withOpacity(0.12), base);
   }
 
   Color _clientTagColor(Client client) {
@@ -2224,18 +2253,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  double _plannedProjectPaymentsSum() {
-    return _projectPayments.where((payment) {
-      if (payment.status != 'planned') {
-        return false;
+  double _projectBudgetSum() {
+    var total = 0.0;
+    for (final project in _activeProjects()) {
+      final payments = _projectPayments
+          .where((payment) => payment.projectId == project.id)
+          .toList();
+      if (payments.isEmpty) {
+        total += project.amount;
+      } else {
+        total += payments.fold<double>(0, (sum, payment) => sum + payment.amount);
       }
-      final project = _projectById(payment.projectId);
-      if (project == null || !_isActiveProject(project)) {
-        return false;
-      }
-      final client = _clientById(project.clientId);
-      return client != null && !client.isArchived;
-    }).fold<double>(0, (sum, payment) => sum + payment.amount);
+    }
+    return total;
   }
 
   double _projectPaymentsPaidThisWeek(DateTime start, DateTime end) {
@@ -2368,25 +2398,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     DateTime end,
   ) {
     final retainerEntries = _retainerUpcomingPayments(start, end).toList();
-    final plannedPayments = _projectPayments.where((payment) {
-      if (payment.status != 'planned') {
-        return false;
+    final activeProjects = _activeProjects();
+    final projectPayments = <ProjectPayment>[];
+    final projectsWithoutPayments = <Project>[];
+
+    for (final project in activeProjects) {
+      final payments = _projectPayments
+          .where((payment) => payment.projectId == project.id)
+          .toList();
+      if (payments.isEmpty) {
+        projectsWithoutPayments.add(project);
+      } else {
+        projectPayments.addAll(payments);
       }
-      final project = _projectById(payment.projectId);
-      if (project == null || !_isActiveProject(project)) {
-        return false;
-      }
-      final client = _clientById(project.clientId);
-      return client != null && !client.isArchived;
-    }).toList();
+    }
 
     _showListSheet(
       title: 'Budget in progress',
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Retainers next 30 days: ${_formatCurrency(_retainerScheduledSum(start, end))}'),
-          Text('Planned project payments: ${_formatCurrency(_plannedProjectPaymentsSum())}'),
+          Text(
+            'Retainers next 30 days: ${_formatCurrency(_retainerScheduledSum(start, end))}',
+          ),
+          Text('Project commitments: ${_formatCurrency(_projectBudgetSum())}'),
           const SizedBox(height: 12),
           const Text('Retainer schedule'),
         ],
@@ -2400,16 +2435,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         if (retainerEntries.isNotEmpty) const _SheetDivider(),
-        ...plannedPayments.map(
+        ...projectPayments.map(
           (payment) {
             final project = _projectById(payment.projectId);
-            final clientName = project == null ? 'Unknown client' : _clientNameForId(project.clientId);
+            final clientName =
+                project == null ? 'Unknown client' : _clientNameForId(project.clientId);
             return _SheetItem(
               title: project?.title ?? 'Unknown project',
               subtitle: '$clientName • ${_paymentKindLabels[payment.kind] ?? payment.kind}',
               trailing: _formatCurrency(payment.amount),
             );
           },
+        ),
+        if (projectsWithoutPayments.isNotEmpty) const _SheetDivider(),
+        ...projectsWithoutPayments.map(
+          (project) => _SheetItem(
+            title: project.title,
+            subtitle: '${_clientNameForId(project.clientId)} • Project total',
+            trailing: _formatCurrency(project.amount),
+          ),
         ),
       ],
       emptyLabel: 'No budget items available.',
@@ -2670,77 +2714,86 @@ class _PaymentPill extends StatelessWidget {
         ? Icons.payments_outlined
         : Icons.calendar_today_outlined;
     return Material(
-      color: Theme.of(context).colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.surfaceVariant,
-        ),
-      ),
+      color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: avatarColor.withOpacity(0.18),
-                child: Icon(
-                  icon,
-                  color: avatarColor,
-                ),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: avatarColor,
+                  child: Icon(
+                    icon,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.clientName,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: avatarColor.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          item.tagLabel,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color:
+                                    Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      item.clientName,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                      formattedAmount,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                     ),
                     const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: avatarColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        item.tagLabel,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                      ),
+                    Text(
+                      formattedDate,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    formattedAmount,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    formattedDate,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2777,14 +2830,18 @@ class _ClientCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      color: cardColor,
-      shape: RoundedRectangleBorder(
+      decoration: BoxDecoration(
+        color: cardColor,
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.surfaceVariant,
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -2795,7 +2852,7 @@ class _ClientCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
-                backgroundColor: tagColor.withOpacity(0.2),
+                backgroundColor: tagColor,
                 child: Text(
                   initials,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -2817,9 +2874,10 @@ class _ClientCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: tagColor.withOpacity(0.2),
+                        color: tagColor.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -2839,7 +2897,7 @@ class _ClientCard extends StatelessWidget {
                 children: [
                   Text(
                     formattedAmount,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                   ),
@@ -2854,6 +2912,7 @@ class _ClientCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz),
                 onSelected: (value) {
                   if (value == 'edit') {
                     onEdit();
