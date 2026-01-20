@@ -8,12 +8,21 @@ import '../models/client.dart';
 import '../models/project.dart';
 import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
+import '../models/user_profile.dart';
+import '../services/app_storage.dart';
 import '../widgets/section_header.dart';
 import '../widgets/stat_card.dart';
+import '../widgets/user_avatar.dart';
 import 'client_detail_screen.dart';
+import 'profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({
+    super.key,
+    required this.onLoggedOut,
+  });
+
+  final VoidCallback onLoggedOut;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -72,6 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   bool _isSearching = false;
   String _searchQuery = '';
+  UserProfile? _profile;
 
   final List<Client> _clients = [];
   final List<Project> _projects = [];
@@ -82,6 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _packageInfoFuture = PackageInfo.fromPlatform();
     _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
+    _loadProfile();
     _loadData();
   }
 
@@ -321,6 +332,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leadingWidth: 64,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(30),
+            onTap: _openProfile,
+            child: UserAvatar(
+              name: _profile?.name,
+              email: _profile?.email,
+            ),
+          ),
+        ),
         title: _isSearching
             ? TextField(
                 controller: _searchController,
@@ -339,7 +362,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Hi Basil',
+                    'Hi ${_profile?.displayName ?? 'there'}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -533,6 +556,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _searchController.clear();
       }
     });
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await AppStorage.loadUserProfile();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _profile = profile;
+    });
+  }
+
+  Future<void> _openProfile() async {
+    final result = await Navigator.of(context).push<ProfileResult>(
+      MaterialPageRoute(
+        builder: (context) => ProfileScreen(profile: _profile),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (result == ProfileResult.updated || result == ProfileResult.dataImported) {
+      await _loadProfile();
+      if (result == ProfileResult.dataImported) {
+        await _loadData();
+      }
+    } else if (result == ProfileResult.loggedOut) {
+      widget.onLoggedOut();
+    }
   }
 
   Future<void> _loadData() async {
