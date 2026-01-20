@@ -36,10 +36,9 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
-      _showMessage(
-        'Missing Supabase config. Set SUPABASE_URL and SUPABASE_ANON_KEY.',
-      );
+    final configError = AppConfig.supabaseConfigError;
+    if (configError != null) {
+      _showMessage(configError);
       return;
     }
     setState(() {
@@ -73,10 +72,9 @@ class _AuthScreenState extends State<AuthScreen> {
       _showMessage('Enter the 6-digit code.');
       return;
     }
-    if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
-      _showMessage(
-        'Missing Supabase config. Set SUPABASE_URL and SUPABASE_ANON_KEY.',
-      );
+    final configError = AppConfig.supabaseConfigError;
+    if (configError != null) {
+      _showMessage(configError);
       return;
     }
     setState(() {
