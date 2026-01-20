@@ -2,20 +2,17 @@ class UserProfile {
   const UserProfile({
     required this.name,
     required this.email,
-    required this.password,
     required this.updatedAt,
   });
 
   final String name;
   final String email;
-  final String password;
   final DateTime updatedAt;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
       name: json['name'] as String? ?? '',
       email: json['email'] as String? ?? '',
-      password: json['password'] as String? ?? '',
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
     );
@@ -25,7 +22,6 @@ class UserProfile {
     return {
       'name': name,
       'email': email,
-      'password': password,
       'updatedAt': updatedAt.toIso8601String(),
     };
   }
