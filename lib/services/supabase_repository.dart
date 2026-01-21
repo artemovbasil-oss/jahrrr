@@ -173,7 +173,9 @@ class SupabaseRepository {
     final data = decoded['data'] as Map<String, dynamic>? ?? {};
     final clients = _sanitizeImportList(data['clients'], userId);
     final retainers = _sanitizeImportList(data['retainer_settings'], userId);
-    final projects = _sanitizeImportList(data['projects'], userId);
+    final projects = _sanitizeImportList(data['projects'], userId)
+        .map((row) => _projectImportPayload(row, userId))
+        .toList();
     final payments = _sanitizeImportList(data['project_payments'], userId);
 
     if (mode == ImportMode.replace) {
@@ -345,7 +347,6 @@ class SupabaseRepository {
       'status': normalizedStatus ?? project.status,
       'deadline_date':
           project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
-      'is_archived': project.isArchived,
       'created_at': project.createdAt.toIso8601String(),
       'updated_at': project.updatedAt.toIso8601String(),
     };
@@ -365,8 +366,31 @@ class SupabaseRepository {
       'status': normalizedStatus ?? project.status,
       'deadline_date':
           project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
-      'is_archived': project.isArchived,
     };
+  }
+
+  Map<String, dynamic> _projectImportPayload(
+    Map<String, dynamic> row,
+    String userId,
+  ) {
+    final payload = <String, dynamic>{
+      'user_id': userId,
+      'client_id': row['client_id'],
+      'title': row['title'],
+      'amount': row['amount'],
+      'status': row['status'],
+      'deadline_date': row['deadline_date'],
+    };
+    if (row['id'] != null) {
+      payload['id'] = row['id'];
+    }
+    if (row['created_at'] != null) {
+      payload['created_at'] = row['created_at'];
+    }
+    if (row['updated_at'] != null) {
+      payload['updated_at'] = row['updated_at'];
+    }
+    return payload;
   }
 
   Map<String, dynamic> _paymentToRow(ProjectPayment payment, String userId) {
@@ -479,7 +503,7 @@ class SupabaseRepository {
     debugPrint(
       'Supabase $operation failed. message=${error.message} '
       'code=${error.code} details=${error.details} hint=${error.hint} '
-      'user_id=${currentUser?.id} payload=$payload',
+      'user_id=${currentUser?.id} payload_keys=${payload.keys.toList()}',
     );
   }
 
@@ -488,7 +512,10 @@ class SupabaseRepository {
     required Object error,
     required Map<String, dynamic> payload,
   }) {
-    debugPrint('Supabase $operation failed. error=$error payload=$payload');
+    debugPrint(
+      'Supabase $operation failed. error=$error '
+      'payload_keys=${payload.keys.toList()}',
+    );
   }
 
   void _logProjectInsertAttempt({
@@ -496,7 +523,8 @@ class SupabaseRepository {
     required Map<String, dynamic> payload,
   }) {
     debugPrint(
-      'Supabase projects.insert attempt user_id=$userId payload=$payload',
+      'Supabase projects.insert attempt user_id=$userId '
+      'payload_keys=${payload.keys.toList()}',
     );
   }
 
