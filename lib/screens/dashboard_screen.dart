@@ -181,9 +181,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? [_buildEmptyState('Add a project to track milestones.')]
         : filteredProjects
             .map(
-              (project) => Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
+                  (project) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
@@ -201,16 +201,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            project.title,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                        ),
-                        Text(
-                          project.deadlineDate == null
-                              ? '—'
+                      child: Text(
+                        project.title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      project.deadlineDate == null
+                          ? '—'
                               : _formatDate(project.deadlineDate!),
                           style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -224,6 +226,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -3101,12 +3105,13 @@ class _ClientCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
                 backgroundColor: tagColor,
+                radius: 18,
                 child: Text(
                   initials,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -3115,7 +3120,7 @@ class _ClientCard extends StatelessWidget {
                       ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3125,11 +3130,13 @@ class _ClientCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Container(
                       padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: tagColor.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(20),

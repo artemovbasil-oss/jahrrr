@@ -1506,16 +1506,20 @@ class _ProjectRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 stageLabel,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               if (project.deadlineDate != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   formatDate(project.deadlineDate!),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1526,7 +1530,7 @@ class _ProjectRow extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         Text(
           formatCurrency(project.amount),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
