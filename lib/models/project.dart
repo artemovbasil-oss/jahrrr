@@ -1,3 +1,29 @@
+const Map<String, String> projectStageLabels = {
+  'first_meeting': 'First meeting',
+  'deposit_received': 'Deposit received',
+  'in_progress': 'In progress',
+  'awaiting_feedback': 'Awaiting feedback',
+  'returned_for_revision': 'Returned for revision',
+  'renegotiating_budget': 'Renegotiating budget',
+  'project_on_hold': 'Project on hold',
+  'payment_received_in_full': 'Payment received in full',
+};
+
+String? normalizeProjectStage(String value) {
+  if (projectStageLabels.containsKey(value)) {
+    return value;
+  }
+  final normalized = value.trim().toLowerCase();
+  for (final entry in projectStageLabels.entries) {
+    if (entry.value.toLowerCase() == normalized) {
+      return entry.key;
+    }
+  }
+  return null;
+}
+
+bool isValidProjectStage(String value) => normalizeProjectStage(value) != null;
+
 class Project {
   const Project({
     required this.id,
