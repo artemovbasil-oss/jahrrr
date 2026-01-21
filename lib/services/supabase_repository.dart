@@ -345,6 +345,7 @@ class SupabaseRepository {
       'title': project.title,
       'amount': project.amount,
       'status': normalizedStatus ?? project.status,
+      'is_archived': project.isArchived,
       'deadline_date':
           project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
       'created_at': project.createdAt.toIso8601String(),
@@ -364,6 +365,7 @@ class SupabaseRepository {
       'title': project.title,
       'amount': project.amount,
       'status': normalizedStatus ?? project.status,
+      'is_archived': project.isArchived,
       'deadline_date':
           project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
     };
@@ -379,6 +381,7 @@ class SupabaseRepository {
       'title': row['title'],
       'amount': row['amount'],
       'status': row['status'],
+      'is_archived': row['is_archived'] ?? false,
       'deadline_date': row['deadline_date'],
     };
     if (row['id'] != null) {
