@@ -5,6 +5,7 @@ import '../models/client.dart';
 import '../models/project.dart';
 import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
+import '../widgets/skeleton.dart';
 
 class ClientDetailScreen extends StatefulWidget {
   const ClientDetailScreen({
@@ -13,6 +14,7 @@ class ClientDetailScreen extends StatefulWidget {
     required this.projects,
     required this.payments,
     this.openRetainerSettings = false,
+    this.isLoading = false,
     required this.onDeleteClient,
     required this.onUpdateClient,
     required this.onDuplicateClient,
@@ -27,6 +29,7 @@ class ClientDetailScreen extends StatefulWidget {
   final List<Project> projects;
   final List<ProjectPayment> payments;
   final bool openRetainerSettings;
+  final bool isLoading;
   final Future<void> Function() onDeleteClient;
   final Future<void> Function(Client updatedClient) onUpdateClient;
   final Future<Client> Function(
@@ -76,6 +79,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         computedPayments.where((payment) => !payment.date.isAfter(normalizedNow)).toList();
     final summaryParts = _buildSummaryChips();
     final visibleProjects = _projects.where((project) => !project.isArchived).toList();
+    final isLoading = widget.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -114,117 +118,185 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         children: [
           _InfoCard(
             title: 'Client details',
-            children: [
-              _InfoRow(label: 'Name', value: _client.name),
-              _InfoRow(
-                label: 'Type',
-                value: _isRetainerClient(_client) ? 'Retainer' : 'Project',
-              ),
-              if (_isRetainerClient(_client))
-                _InfoRow(
-                  label: 'Retainer amount',
-                  value: _formatCurrency(_client.retainerSettings?.amount ?? 0),
-                ),
-              if (!_isRetainerClient(_client))
-                _InfoRow(
-                  label: 'Planned budget',
-                  value: _formatCurrency(_client.plannedBudget ?? 0),
-                ),
-              if (summaryParts.isNotEmpty)
-                _InfoChipsRow(label: 'Summary', chips: summaryParts),
-              if (_client.contactPerson != null && _client.contactPerson!.isNotEmpty)
-                _InfoRow(label: 'Contact', value: _client.contactPerson!),
-              if (_client.phone != null && _client.phone!.isNotEmpty)
-                _InfoLinkRow(
-                  label: 'Phone',
-                  value: _client.phone!,
-                  onTap: () => _copyToClipboard(_client.phone!),
-                ),
-              if (_client.email != null && _client.email!.isNotEmpty)
-                _InfoLinkRow(
-                  label: 'Email',
-                  value: _client.email!,
-                  onTap: () => _copyToClipboard(_client.email!),
-                ),
-              if (_client.telegram != null && _client.telegram!.isNotEmpty)
-                _InfoLinkRow(
-                  label: 'Telegram',
-                  value: _client.telegram!,
-                  onTap: () => _copyToClipboard(_client.telegram!),
-                ),
-            ],
+            children: isLoading
+                ? _buildLoadingDetails()
+                : [
+                    _InfoRow(label: 'Name', value: _client.name),
+                    _InfoRow(
+                      label: 'Type',
+                      value: _isRetainerClient(_client) ? 'Retainer' : 'Project',
+                    ),
+                    if (_isRetainerClient(_client))
+                      _InfoRow(
+                        label: 'Retainer amount',
+                        value: _formatCurrency(_client.retainerSettings?.amount ?? 0),
+                      ),
+                    if (!_isRetainerClient(_client))
+                      _InfoRow(
+                        label: 'Planned budget',
+                        value: _formatCurrency(_client.plannedBudget ?? 0),
+                      ),
+                    if (summaryParts.isNotEmpty)
+                      _InfoChipsRow(label: 'Summary', chips: summaryParts),
+                    if (_client.contactPerson != null && _client.contactPerson!.isNotEmpty)
+                      _InfoRow(label: 'Contact', value: _client.contactPerson!),
+                    if (_client.phone != null && _client.phone!.isNotEmpty)
+                      _InfoLinkRow(
+                        label: 'Phone',
+                        value: _client.phone!,
+                        onTap: () => _copyToClipboard(_client.phone!),
+                      ),
+                    if (_client.email != null && _client.email!.isNotEmpty)
+                      _InfoLinkRow(
+                        label: 'Email',
+                        value: _client.email!,
+                        onTap: () => _copyToClipboard(_client.email!),
+                      ),
+                    if (_client.telegram != null && _client.telegram!.isNotEmpty)
+                      _InfoLinkRow(
+                        label: 'Telegram',
+                        value: _client.telegram!,
+                        onTap: () => _copyToClipboard(_client.telegram!),
+                      ),
+                  ],
           ),
           const SizedBox(height: 20),
           if (!_isRetainerClient(_client)) ...[
             _InfoCard(
               title: 'Projects',
-              children: visibleProjects.isEmpty
-                  ? [const Text('No projects yet.')]
-                  : visibleProjects
-                      .map(
-                        (project) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: _ProjectRow(
-                            project: project,
-                            onEdit: () => _editProject(project),
-                            onArchive: () => _archiveProject(project),
-                            onDuplicate: () => _duplicateProject(project),
-                            formatDate: _formatDate,
-                            stageLabel:
-                                projectStageLabels[project.status] ?? project.status,
-                          ),
-                        ),
-                      )
-                      .toList(),
+              children: isLoading
+                  ? _buildLoadingProjects()
+                  : visibleProjects.isEmpty
+                      ? [const Text('No projects yet.')]
+                      : visibleProjects
+                          .map(
+                            (project) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: _ProjectRow(
+                                project: project,
+                                onEdit: () => _editProject(project),
+                                onArchive: () => _archiveProject(project),
+                                onDuplicate: () => _duplicateProject(project),
+                                formatDate: _formatDate,
+                                formatCurrency: _formatCurrency,
+                                stageLabel:
+                                    projectStageLabels[project.status] ?? project.status,
+                              ),
+                            ),
+                          )
+                          .toList(),
             ),
             const SizedBox(height: 20),
           ],
           _InfoCard(
             title: 'Upcoming payments',
-            children: upcomingPayments.isEmpty
-                ? [const Text('No upcoming payments.')]
-                : upcomingPayments
-                    .map(
-                      (payment) => _PaymentRow(
-                        payment: payment,
-                        formatDate: _formatDate,
-                        formatCurrency: _formatCurrency,
-                        onEdit: payment.sourcePayment == null
-                            ? null
-                            : () => _editPayment(payment.sourcePayment!),
-                        onDelete: payment.sourcePayment == null
-                            ? null
-                            : () => _deletePayment(payment.sourcePayment!),
-                        onMarkPaid:
-                            payment.sourcePayment?.status == 'planned'
-                                ? () => _markPaymentAsPaid(payment.sourcePayment!)
-                                : null,
-                      ),
-                    )
-                    .toList(),
+            children: isLoading
+                ? _buildLoadingPayments()
+                : upcomingPayments.isEmpty
+                    ? [const Text('No upcoming payments.')]
+                    : upcomingPayments
+                        .map(
+                          (payment) => _PaymentRow(
+                            payment: payment,
+                            formatDate: _formatDate,
+                            formatCurrency: _formatCurrency,
+                            onEdit: payment.sourcePayment == null
+                                ? null
+                                : () => _editPayment(payment.sourcePayment!),
+                            onDelete: payment.sourcePayment == null
+                                ? null
+                                : () => _deletePayment(payment.sourcePayment!),
+                            onMarkPaid:
+                                payment.sourcePayment?.status == 'planned'
+                                    ? () => _markPaymentAsPaid(payment.sourcePayment!)
+                                    : null,
+                          ),
+                        )
+                        .toList(),
           ),
           const SizedBox(height: 20),
           _InfoCard(
             title: 'Payment history',
-            children: pastPayments.isEmpty
-                ? [const Text('No payment history yet.')]
-                : pastPayments
-                    .map(
-                      (payment) => _PaymentRow(
-                        payment: payment,
-                        formatDate: _formatDate,
-                        formatCurrency: _formatCurrency,
-                        onEdit: payment.sourcePayment == null
-                            ? null
-                            : () => _editPayment(payment.sourcePayment!),
-                        onDelete: payment.sourcePayment == null
-                            ? null
-                            : () => _deletePayment(payment.sourcePayment!),
-                      ),
-                    )
-                    .toList(),
+            children: isLoading
+                ? _buildLoadingPayments()
+                : pastPayments.isEmpty
+                    ? [const Text('No payment history yet.')]
+                    : pastPayments
+                        .map(
+                          (payment) => _PaymentRow(
+                            payment: payment,
+                            formatDate: _formatDate,
+                            formatCurrency: _formatCurrency,
+                            onEdit: payment.sourcePayment == null
+                                ? null
+                                : () => _editPayment(payment.sourcePayment!),
+                            onDelete: payment.sourcePayment == null
+                                ? null
+                                : () => _deletePayment(payment.sourcePayment!),
+                          ),
+                        )
+                        .toList(),
           ),
         ],
+      ),
+    );
+  }
+
+  List<Widget> _buildLoadingDetails() {
+    return const [
+      SkeletonBox(height: 14, width: 120, margin: EdgeInsets.only(bottom: 12)),
+      SkeletonBox(height: 14, width: 180, margin: EdgeInsets.only(bottom: 12)),
+      SkeletonBox(height: 14, width: 140, margin: EdgeInsets.only(bottom: 12)),
+      SkeletonBox(height: 14, width: 200),
+    ];
+  }
+
+  List<Widget> _buildLoadingProjects() {
+    return List.generate(
+      3,
+      (_) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 14, width: 160),
+                  SizedBox(height: 6),
+                  SkeletonBox(height: 12, width: 120),
+                ],
+              ),
+            ),
+            SizedBox(width: 12),
+            SkeletonBox(height: 14, width: 60),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildLoadingPayments() {
+    return List.generate(
+      3,
+      (_) => const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 14, width: 160),
+                  SizedBox(height: 6),
+                  SkeletonBox(height: 12, width: 120),
+                ],
+              ),
+            ),
+            SizedBox(width: 12),
+            SkeletonBox(height: 14, width: 70),
+          ],
+        ),
       ),
     );
   }
@@ -1408,6 +1480,7 @@ class _ProjectRow extends StatelessWidget {
     required this.onEdit,
     required this.onArchive,
     required this.formatDate,
+    required this.formatCurrency,
     required this.stageLabel,
   });
 
@@ -1416,6 +1489,7 @@ class _ProjectRow extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onArchive;
   final String Function(DateTime) formatDate;
+  final String Function(double) formatCurrency;
   final String stageLabel;
 
   @override
@@ -1432,16 +1506,20 @@ class _ProjectRow extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 stageLabel,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               if (project.deadlineDate != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   formatDate(project.deadlineDate!),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1451,6 +1529,13 @@ class _ProjectRow extends StatelessWidget {
               ],
             ],
           ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          formatCurrency(project.amount),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_horiz),

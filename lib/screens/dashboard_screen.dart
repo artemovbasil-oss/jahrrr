@@ -11,6 +11,7 @@ import '../models/retainer_settings.dart';
 import '../models/user_profile.dart';
 import '../services/supabase_repository.dart';
 import '../widgets/section_header.dart';
+import '../widgets/skeleton.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/user_avatar.dart';
 import 'client_detail_screen.dart';
@@ -176,98 +177,108 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   payment.tagLabel.toLowerCase().contains(normalizedQuery),
             )
             .toList();
-    final milestoneWidgets = _isLoading
-        ? [_buildEmptyState('Loading milestones...')]
-        : filteredProjects.isEmpty
-            ? [_buildEmptyState('Add a project to track milestones.')]
-            : filteredProjects
-                .map(
+    final milestoneWidgets = filteredProjects.isEmpty
+        ? [_buildEmptyState('Add a project to track milestones.')]
+        : filteredProjects
+            .map(
                   (project) => Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                project.title,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
+                        Expanded(
+                      child: Text(
+                        project.title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
-                            Text(
-                              project.deadlineDate == null
-                                  ? '—'
-                                  : _formatDate(project.deadlineDate!),
-                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _clientNameForId(project.clientId),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      project.deadlineDate == null
+                          ? '—'
+                              : _formatDate(project.deadlineDate!),
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _projectStageColor(project.status).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                projectStageLabels[project.status] ?? project.status,
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: LinearProgressIndicator(
-                            value: _projectStageProgress(project.status),
-                            backgroundColor:
-                                Theme.of(context).colorScheme.surfaceVariant,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              _projectStageColor(project.status),
-                            ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _clientNameForId(project.clientId),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _projectStageColor(project.status).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            projectStageLabels[project.status] ?? project.status,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                )
-                .toList();
+                    const SizedBox(height: 12),
+                    Text(
+                      _formatCurrency(project.amount),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: LinearProgressIndicator(
+                        value: _projectStageProgress(project.status),
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceVariant,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _projectStageColor(project.status),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList();
     final paymentWidgets = _isLoading
-        ? [_buildEmptyState('Loading payments...')]
+        ? _buildLoadingPaymentPills()
         : filteredPayments.isEmpty
             ? [_buildEmptyState('No payments this week.')]
             : [
@@ -303,7 +314,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ];
     final clientWidgets = _isLoading
-        ? [_buildEmptyState('Loading clients...')]
+        ? _buildLoadingClientCards()
         : filteredClients.isEmpty
             ? [_buildEmptyState('Add a client to get started.')]
             : filteredClients
@@ -402,45 +413,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             childAspectRatio: 0.95,
-            children: [
-              StatCard(
-                title: 'Active projects',
-                value: activeProjectsCount.toString(),
-                tag: '$activeProjectClientsCount active clients',
-                accentColor: const Color(0xFF0369A1),
-                gradient: const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
-                onTap: () => _showActiveProjectsSheet(activeProjects),
-              ),
-              StatCard(
-                title: 'Budget in progress',
-                value: _formatCurrency(budgetInProgress),
-                tag: '$activeProjectsCount projects',
-                accentColor: const Color(0xFF00A63E),
-                gradient: const [Color(0xFFF0F5E0), Color(0xFF96CA49)],
-                onTap: () => _showBudgetBreakdownSheet(
-                  today,
-                  range30End,
-                ),
-              ),
-              StatCard(
-                title: 'Deadlines',
-                value: deadlinesThisWeek.toString(),
-                tag: 'This week',
-                accentColor: const Color(0xFFCA8A04),
-                gradient: const [Color(0xFFFEF3C7), Color(0xFFFDE047)],
-                onTap: () => _showDeadlinesSheet(
-                  _deadlineProjects(today, range7End),
-                ),
-              ),
-              StatCard(
-                title: 'Upcoming payments',
-                value: _formatCurrency(upcomingPayments),
-                tag: 'This week',
-                accentColor: const Color(0xFF0F0E0E),
-                gradient: const [Colors.white, Color(0xFFC0C0C0)],
-                onTap: () => _showUpcomingPaymentsSheet(today, range7End),
-              ),
-            ],
+            children: _isLoading
+                ? List.generate(4, (_) => _buildSkeletonStatCard(context))
+                : [
+                    StatCard(
+                      title: 'Active projects',
+                      value: activeProjectsCount.toString(),
+                      tag: '$activeProjectClientsCount active clients',
+                      accentColor: const Color(0xFF0369A1),
+                      gradient: const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
+                      onTap: () => _showActiveProjectsSheet(activeProjects),
+                    ),
+                    StatCard(
+                      title: 'Budget in progress',
+                      value: _formatCurrency(budgetInProgress),
+                      tag: '$activeProjectsCount projects',
+                      accentColor: const Color(0xFF00A63E),
+                      gradient: const [Color(0xFFF0F5E0), Color(0xFF96CA49)],
+                      onTap: () => _showBudgetBreakdownSheet(
+                        today,
+                        range30End,
+                      ),
+                    ),
+                    StatCard(
+                      title: 'Deadlines',
+                      value: deadlinesThisWeek.toString(),
+                      tag: 'This week',
+                      accentColor: const Color(0xFFCA8A04),
+                      gradient: const [Color(0xFFFEF3C7), Color(0xFFFDE047)],
+                      onTap: () => _showDeadlinesSheet(
+                        _deadlineProjects(today, range7End),
+                      ),
+                    ),
+                    StatCard(
+                      title: 'Upcoming payments',
+                      value: _formatCurrency(upcomingPayments),
+                      tag: 'This week',
+                      accentColor: const Color(0xFF0F0E0E),
+                      gradient: const [Colors.white, Color(0xFFC0C0C0)],
+                      onTap: () => _showUpcomingPaymentsSheet(today, range7End),
+                    ),
+                  ],
           ),
           const SizedBox(height: 28),
           SectionHeader(
@@ -449,7 +462,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onActionPressed: () => _showSnackBar(context, 'Viewing all milestones'),
           ),
           const SizedBox(height: 12),
-          ...milestoneWidgets,
+          ...(_isLoading ? _buildLoadingMilestones() : milestoneWidgets),
           const SizedBox(height: 24),
           SectionHeader(
             title: 'Upcoming payments',
@@ -746,6 +759,158 @@ class _DashboardScreenState extends State<DashboardScreen> {
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonStatCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SkeletonBox(height: 14, width: 110),
+          SizedBox(height: 16),
+          SkeletonBox(height: 28, width: 90),
+          SizedBox(height: 12),
+          SkeletonBox(height: 12, width: 140),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildLoadingMilestones() {
+    return List.generate(
+      3,
+      (_) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SkeletonBox(height: 16, width: 160),
+            SizedBox(height: 8),
+            SkeletonBox(height: 12, width: 120),
+            SizedBox(height: 12),
+            SkeletonBox(height: 20, width: 80),
+            SizedBox(height: 12),
+            SkeletonBox(height: 10, width: double.infinity),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildLoadingPaymentPills() {
+    return List.generate(
+      3,
+      (_) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Row(
+          children: [
+            SkeletonBox(height: 40, width: 40, borderRadius: BorderRadius.all(Radius.circular(20))),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 14, width: 140),
+                  SizedBox(height: 8),
+                  SkeletonBox(height: 12, width: 80),
+                ],
+              ),
+            ),
+            SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                SkeletonBox(height: 16, width: 70),
+                SizedBox(height: 8),
+                SkeletonBox(height: 12, width: 50),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildLoadingClientCards() {
+    return List.generate(
+      3,
+      (_) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Row(
+          children: [
+            SkeletonBox(height: 40, width: 40, borderRadius: BorderRadius.all(Radius.circular(20))),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(height: 14, width: 140),
+                  SizedBox(height: 8),
+                  SkeletonBox(height: 12, width: 90),
+                ],
+              ),
+            ),
+            SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                SkeletonBox(height: 16, width: 70),
+                SizedBox(height: 8),
+                SkeletonBox(height: 12, width: 80),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2082,6 +2247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           projects: clientProjects,
           payments: clientPayments,
           openRetainerSettings: openRetainerSettings,
+          isLoading: _isLoading,
           onDeleteClient: () => _archiveClient(client),
           onUpdateClient: _updateClient,
           onDuplicateClient: (source, newName, copyWithAllSettings) =>
@@ -2939,12 +3105,13 @@ class _ClientCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
                 backgroundColor: tagColor,
+                radius: 18,
                 child: Text(
                   initials,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -2953,7 +3120,7 @@ class _ClientCard extends StatelessWidget {
                       ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2963,11 +3130,13 @@ class _ClientCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Container(
                       padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: tagColor.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(20),
