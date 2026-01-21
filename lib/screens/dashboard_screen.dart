@@ -2421,7 +2421,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (error.code != null) 'code=${error.code}',
         if (error.details != null) 'details=${error.details}',
         if (error.hint != null) 'hint=${error.hint}',
-        if (error.statusCode != null) 'status=${error.statusCode}',
       ].join(', ');
       return 'Failed to create $resource: $details';
     }
