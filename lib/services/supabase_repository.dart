@@ -479,7 +479,7 @@ class SupabaseRepository {
     debugPrint(
       'Supabase $operation failed. message=${error.message} '
       'code=${error.code} details=${error.details} hint=${error.hint} '
-      'status=${error.statusCode} user_id=${currentUser?.id} payload=$payload',
+      'user_id=${currentUser?.id} payload=$payload',
     );
   }
 
@@ -516,7 +516,7 @@ class SupabaseRepository {
       );
     }
     if (project.title.trim().isEmpty) {
-      throw const ArgumentError('Project title cannot be empty.');
+      throw ArgumentError('Project title cannot be empty.');
     }
     if (project.amount <= 0) {
       throw ArgumentError.value(
