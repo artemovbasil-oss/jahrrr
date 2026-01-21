@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/client.dart';
@@ -30,16 +31,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  static const Map<String, String> _projectStageLabels = {
-    'first_meeting': 'First meeting',
-    'deposit_received': 'Deposit received',
-    'in_progress': 'In progress',
-    'awaiting_feedback': 'Awaiting feedback',
-    'returned_for_revision': 'Returned for revision',
-    'renegotiating_budget': 'Renegotiating budget',
-    'project_on_hold': 'Project on hold',
-    'payment_received_in_full': 'Payment received in full',
-  };
   static const Map<String, String> _paymentKindLabels = {
     'deposit': 'Deposit',
     'milestone': 'Milestone',
@@ -140,7 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? 0.0
         : _projectPaymentsPaidThisWeek(today, range7End) +
             _retainerScheduledSum(today, range7End);
-    final clientStatuses = _projectStageLabels.entries.toList();
+    final clientStatuses = projectStageLabels.entries.toList();
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredProjects = normalizedQuery.isEmpty
         ? activeProjects
@@ -248,7 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Text(
-                                _projectStageLabels[project.status] ?? project.status,
+                                projectStageLabels[project.status] ?? project.status,
                                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                       fontWeight: FontWeight.w600,
                                       color:
@@ -1553,7 +1544,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Project stage',
                         ),
-                        items: _projectStageLabels.entries
+                        items: projectStageLabels.entries
                             .map(
                               (entry) => DropdownMenuItem(
                                 value: entry.key,
@@ -1889,7 +1880,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     final stage = _selectedProjectStage ?? 'first_meeting';
-    if (!_projectStageLabels.containsKey(stage)) {
+    if (!isValidProjectStage(stage)) {
       _showSnackBar(context, 'Select a valid project stage');
       return;
     }
@@ -2424,6 +2415,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _formatInsertError(String resource, Object error) {
+    if (error is PostgrestException) {
+      final details = [
+        'message=${error.message}',
+        if (error.code != null) 'code=${error.code}',
+        if (error.details != null) 'details=${error.details}',
+        if (error.hint != null) 'hint=${error.hint}',
+        if (error.statusCode != null) 'status=${error.statusCode}',
+      ].join(', ');
+      return 'Failed to create $resource: $details';
+    }
     return 'Failed to create $resource: $error';
   }
 
@@ -2431,16 +2432,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!kDebugMode) {
       return;
     }
-    final eligibleClients = _projectEligibleClients();
-    if (eligibleClients.isEmpty) {
+    final clientId = await _repository.fetchFirstEligibleClientId();
+    if (clientId == null) {
       _showSnackBar(context, 'No eligible clients available for debug insert.');
       return;
     }
-    final client = eligibleClients.first;
     final now = DateTime.now();
     final project = Project(
       id: _generateId(),
-      clientId: client.id,
+      clientId: clientId,
       title: 'Debug project ${now.toIso8601String()}',
       amount: 1,
       status: 'first_meeting',
@@ -2451,6 +2451,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     try {
       final saved = await _repository.createProject(project);
+      debugPrint('Debug project insert succeeded: ${saved.toJson()}');
       if (!mounted) {
         return;
       }
@@ -2474,7 +2475,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             (project) => _SheetItem(
               title: project.title,
               subtitle:
-                  '${_clientNameForId(project.clientId)} • ${_projectStageLabels[project.status] ?? project.status}',
+                  '${_clientNameForId(project.clientId)} • ${projectStageLabels[project.status] ?? project.status}',
               trailing: project.deadlineDate == null
                   ? null
                   : _formatDate(project.deadlineDate!),
