@@ -503,8 +503,7 @@ class SupabaseRepository {
     debugPrint(
       'Supabase $operation failed. message=${error.message} '
       'code=${error.code} details=${error.details} hint=${error.hint} '
-      'status=${error.status} user_id=${currentUser?.id} '
-      'payload_keys=${payload.keys.toList()}',
+      'user_id=${currentUser?.id} payload_keys=${payload.keys.toList()}',
     );
   }
 
