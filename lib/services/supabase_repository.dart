@@ -47,7 +47,7 @@ class SupabaseRepository {
       normalizedStatus: normalizedStatus,
     );
     final payload =
-        _projectInsertPayload(project, userId, normalizedStatus: normalizedStatus);
+        _projectToSupabaseRow(project, userId, normalizedStatus: normalizedStatus);
     _logProjectInsertAttempt(
       userId: userId,
       payload: payload,
@@ -257,8 +257,16 @@ class SupabaseRepository {
     if (toDelete.isNotEmpty) {
       await _client.from('projects').delete().inFilter('id', toDelete);
     }
-    final payload =
-        projects.map((project) => _projectToRow(project, userId)).toList();
+    final payload = projects
+        .map(
+          (project) => _projectToSupabaseRow(
+            project,
+            userId,
+            normalizedStatus: normalizeProjectStage(project.status),
+            includeTimestamps: true,
+          ),
+        )
+        .toList();
     if (payload.isNotEmpty) {
       await _client.from('projects').upsert(payload);
     }
@@ -336,39 +344,28 @@ class SupabaseRepository {
     };
   }
 
-  Map<String, dynamic> _projectToRow(Project project, String userId) {
-    final normalizedStatus = normalizeProjectStage(project.status);
-    return {
-      'id': project.id,
-      'user_id': userId,
-      'client_id': project.clientId,
-      'title': project.title,
-      'amount': project.amount,
-      'status': normalizedStatus ?? project.status,
-      'is_archived': project.isArchived,
-      'deadline_date':
-          project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
-      'created_at': project.createdAt.toIso8601String(),
-      'updated_at': project.updatedAt.toIso8601String(),
-    };
-  }
-
-  Map<String, dynamic> _projectInsertPayload(
+  Map<String, dynamic> _projectToSupabaseRow(
     Project project,
     String userId, {
     required String? normalizedStatus,
+    bool includeTimestamps = false,
   }) {
-    return {
+    final payload = <String, dynamic>{
       'id': project.id,
       'user_id': userId,
       'client_id': project.clientId,
       'title': project.title,
       'amount': project.amount,
       'status': normalizedStatus ?? project.status,
-      'is_archived': project.isArchived,
-      'deadline_date':
-          project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
+      'deadline_date': project.deadlineDate == null
+          ? null
+          : _formatDate(project.deadlineDate!),
     };
+    if (includeTimestamps) {
+      payload['created_at'] = project.createdAt.toIso8601String();
+      payload['updated_at'] = project.updatedAt.toIso8601String();
+    }
+    return payload;
   }
 
   Map<String, dynamic> _projectImportPayload(
@@ -381,7 +378,6 @@ class SupabaseRepository {
       'title': row['title'],
       'amount': row['amount'],
       'status': row['status'],
-      'is_archived': row['is_archived'] ?? false,
       'deadline_date': row['deadline_date'],
     };
     if (row['id'] != null) {
