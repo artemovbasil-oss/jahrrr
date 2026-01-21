@@ -39,7 +39,19 @@ class SupabaseRepository {
 
   Future<Project> createProject(Project project) async {
     final userId = _requireUserId();
-    final payload = _projectInsertPayload(project, userId);
+    await _assertClientOwnership(userId, project.clientId);
+    final normalizedStatus = normalizeProjectStage(project.status);
+    _validateProjectInsert(
+      project: project,
+      userId: userId,
+      normalizedStatus: normalizedStatus,
+    );
+    final payload =
+        _projectInsertPayload(project, userId, normalizedStatus: normalizedStatus);
+    _logProjectInsertAttempt(
+      userId: userId,
+      payload: payload,
+    );
     try {
       final row = await _client
           .from('projects')
@@ -323,13 +335,14 @@ class SupabaseRepository {
   }
 
   Map<String, dynamic> _projectToRow(Project project, String userId) {
+    final normalizedStatus = normalizeProjectStage(project.status);
     return {
       'id': project.id,
       'user_id': userId,
       'client_id': project.clientId,
       'title': project.title,
       'amount': project.amount,
-      'status': project.status,
+      'status': normalizedStatus ?? project.status,
       'deadline_date':
           project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
       'is_archived': project.isArchived,
@@ -338,14 +351,18 @@ class SupabaseRepository {
     };
   }
 
-  Map<String, dynamic> _projectInsertPayload(Project project, String userId) {
+  Map<String, dynamic> _projectInsertPayload(
+    Project project,
+    String userId, {
+    required String? normalizedStatus,
+  }) {
     return {
       'id': project.id,
       'user_id': userId,
       'client_id': project.clientId,
       'title': project.title,
       'amount': project.amount,
-      'status': project.status,
+      'status': normalizedStatus ?? project.status,
       'deadline_date':
           project.deadlineDate == null ? null : _formatDate(project.deadlineDate!),
       'is_archived': project.isArchived,
@@ -462,7 +479,7 @@ class SupabaseRepository {
     debugPrint(
       'Supabase $operation failed. message=${error.message} '
       'code=${error.code} details=${error.details} hint=${error.hint} '
-      'payload=$payload',
+      'status=${error.statusCode} user_id=${currentUser?.id} payload=$payload',
     );
   }
 
@@ -472,5 +489,84 @@ class SupabaseRepository {
     required Map<String, dynamic> payload,
   }) {
     debugPrint('Supabase $operation failed. error=$error payload=$payload');
+  }
+
+  void _logProjectInsertAttempt({
+    required String userId,
+    required Map<String, dynamic> payload,
+  }) {
+    debugPrint(
+      'Supabase projects.insert attempt user_id=$userId payload=$payload',
+    );
+  }
+
+  void _validateProjectInsert({
+    required Project project,
+    required String userId,
+    required String? normalizedStatus,
+  }) {
+    if (userId.trim().isEmpty) {
+      throw const AuthException('Missing authenticated user id.');
+    }
+    if (!_isValidUuid(project.clientId)) {
+      throw ArgumentError.value(
+        project.clientId,
+        'client_id',
+        'Client id must be a valid UUID.',
+      );
+    }
+    if (project.title.trim().isEmpty) {
+      throw const ArgumentError('Project title cannot be empty.');
+    }
+    if (project.amount <= 0) {
+      throw ArgumentError.value(
+        project.amount,
+        'amount',
+        'Project amount must be greater than 0.',
+      );
+    }
+    if (normalizedStatus == null) {
+      throw ArgumentError.value(
+        project.status,
+        'status',
+        'Project status must match a supported stage.',
+      );
+    }
+  }
+
+  bool _isValidUuid(String value) {
+    final uuidRegex = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-'
+      r'[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+    );
+    return uuidRegex.hasMatch(value);
+  }
+
+  Future<void> _assertClientOwnership(String userId, String clientId) async {
+    final row = await _client
+        .from('clients')
+        .select('id')
+        .eq('id', clientId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (row == null) {
+      throw StateError(
+        'Selected client does not exist for the current user.',
+      );
+    }
+  }
+
+  Future<String?> fetchFirstEligibleClientId() async {
+    final userId = _requireUserId();
+    final row = await _client
+        .from('clients')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('is_archived', false)
+        .neq('type', 'retainer')
+        .order('created_at')
+        .limit(1)
+        .maybeSingle();
+    return row == null ? null : row['id'] as String?;
   }
 }

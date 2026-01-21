@@ -47,16 +47,6 @@ class ClientDetailScreen extends StatefulWidget {
 }
 
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
-  static const Map<String, String> _projectStageLabels = {
-    'first_meeting': 'First meeting',
-    'deposit_received': 'Deposit received',
-    'in_progress': 'In progress',
-    'awaiting_feedback': 'Awaiting feedback',
-    'returned_for_revision': 'Returned for revision',
-    'renegotiating_budget': 'Renegotiating budget',
-    'project_on_hold': 'Project on hold',
-    'payment_received_in_full': 'Payment received in full',
-  };
 
   late List<Project> _projects;
   late List<ProjectPayment> _payments;
@@ -181,7 +171,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                             onDuplicate: () => _duplicateProject(project),
                             formatDate: _formatDate,
                             stageLabel:
-                                _projectStageLabels[project.status] ?? project.status,
+                                projectStageLabels[project.status] ?? project.status,
                           ),
                         ),
                       )
@@ -707,7 +697,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Project stage',
                       ),
-                      items: _projectStageLabels.entries
+                      items: projectStageLabels.entries
                           .map(
                             (entry) => DropdownMenuItem(
                               value: entry.key,
