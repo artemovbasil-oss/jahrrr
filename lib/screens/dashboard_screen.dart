@@ -182,95 +182,95 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : filteredProjects
             .map(
               (project) => Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                project.title,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ),
-                            Text(
-                              project.deadlineDate == null
-                                  ? '—'
-                                  : _formatDate(project.deadlineDate!),
-                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ],
+                        Expanded(
+                          child: Text(
+                            project.title,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
                         ),
-                        const SizedBox(height: 6),
                         Text(
-                          _clientNameForId(project.clientId),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          project.deadlineDate == null
+                              ? '—'
+                              : _formatDate(project.deadlineDate!),
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _projectStageColor(project.status).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                projectStageLabels[project.status] ?? project.status,
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _formatCurrency(project.amount),
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: LinearProgressIndicator(
-                            value: _projectStageProgress(project.status),
-                            backgroundColor:
-                                Theme.of(context).colorScheme.surfaceVariant,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              _projectStageColor(project.status),
-                            ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _clientNameForId(project.clientId),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _projectStageColor(project.status).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            projectStageLabels[project.status] ?? project.status,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                )
+                    const SizedBox(height: 12),
+                    Text(
+                      _formatCurrency(project.amount),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: LinearProgressIndicator(
+                        value: _projectStageProgress(project.status),
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceVariant,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _projectStageColor(project.status),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             )
             .toList();
     final paymentWidgets = _isLoading
