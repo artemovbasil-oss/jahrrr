@@ -36,7 +36,26 @@ class _AuthGateState extends State<AuthGate> {
         _isLoading = false;
       });
     });
-    _isLoading = false;
+    _initializeAuthState();
+  }
+
+  Future<void> _initializeAuthState() async {
+    final auth = Supabase.instance.client.auth;
+    final session = auth.currentSession;
+    if (session != null && auth.currentUser == null) {
+      try {
+        await auth.getUser();
+      } catch (_) {
+        // auth state will be handled by the listener.
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _session = session;
+      _isLoading = false;
+    });
   }
 
   @override
@@ -52,6 +71,13 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_session != null &&
+        Supabase.instance.client.auth.currentUser == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
