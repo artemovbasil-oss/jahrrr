@@ -287,13 +287,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
           ),
           const SizedBox(height: 12),
-          SwitchListTile.adaptive(
-            value: themeController.isDarkMode,
-            title: const Text('Dark theme'),
-            subtitle: const Text('Toggle between light and dark modes.'),
-            onChanged: (value) async {
-              await themeController.setDarkMode(value);
-            },
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Theme',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    label: Text('System'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    label: Text('Light'),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    label: Text('Dark'),
+                  ),
+                ],
+                selected: {themeController.themeMode},
+                onSelectionChanged: (selection) async {
+                  await themeController.setThemeMode(selection.first);
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           Text(
