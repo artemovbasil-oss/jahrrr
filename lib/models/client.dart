@@ -8,6 +8,7 @@ class Client {
     required this.isArchived,
     required this.createdAt,
     required this.updatedAt,
+    required this.avatarColorHex,
     this.contactPerson,
     this.phone,
     this.email,
@@ -22,6 +23,7 @@ class Client {
   final bool isArchived;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String avatarColorHex;
   final String? contactPerson;
   final String? phone;
   final String? email;
@@ -37,6 +39,7 @@ class Client {
         : 'project';
     final type = json['type'] as String? ?? legacyType;
     final id = json['id'] as String? ?? (json['name'] as String? ?? '');
+    final avatarColorHex = json['avatarColorHex'] as String? ?? '';
     final retainerSettingsJson = json['retainerSettings'] as Map<String, dynamic>?;
     final parsedRetainer = retainerSettingsJson == null
         ? _buildLegacyRetainerSettings(legacyProject, legacyBudget)
@@ -56,6 +59,7 @@ class Client {
           DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
       updatedAt:
           DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
+      avatarColorHex: avatarColorHex,
       retainerSettings: type == 'retainer' ? parsedRetainer : null,
     );
   }
@@ -73,6 +77,7 @@ class Client {
       'isArchived': isArchived,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'avatarColorHex': avatarColorHex,
       'retainerSettings': retainerSettings?.toJson(),
     };
   }
