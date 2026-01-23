@@ -719,8 +719,7 @@ class SupabaseRepository {
     debugPrint(
       'Supabase $table $operation failed. message=${error.message} '
       'code=${error.code} details=${error.details} hint=${error.hint} '
-      'status=${error.status} user_id=${currentUser?.id} '
-      'session=${_client.auth.currentSession != null} '
+      'user_id=${currentUser?.id} session=${_client.auth.currentSession != null} '
       'payload_keys=${payload.keys.toList()}',
     );
   }
