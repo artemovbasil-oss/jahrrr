@@ -12,6 +12,7 @@ import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
 import '../models/user_profile.dart';
 import '../services/supabase_repository.dart';
+import '../utils/client_color.dart';
 import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/stat_card.dart';
@@ -44,14 +45,6 @@ class _AvatarColorUpdate {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  static const List<Color> _clientAvatarPalette = [
-    Color(0xFF2D6EF8),
-    Color(0xFF1FA85B),
-    Color(0xFFB8432D),
-    Color(0xFF8D9BA7),
-    Color(0xFF6F3CC3),
-    Color(0xFF16A3B7),
-  ];
   static const Map<String, String> _paymentKindLabels = {
     'deposit': 'Deposit',
     'milestone': 'Milestone',
@@ -269,23 +262,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                         ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _projectStageColor(project.status).withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            projectStageLabels[project.status] ?? project.status,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color:
-                                      Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    _clientColorForId(project.clientId).withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                projectStageLabels[project.status] ?? project.status,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -359,12 +362,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         tagColor: _clientTagColor(client),
                         avatarColor: _clientAvatarColor(client),
                         onTap: () => _openClientDetails(client),
-                        onEdit: () => _showEditClientForm(client),
-                        onArchive: () => _archiveClient(client),
-                        onDuplicate: () => _duplicateClient(client),
                       ),
                     )
-                .toList();
+                    .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -555,33 +555,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildMascotReveal(),
         ],
       ),
-      floatingActionButton: MenuAnchor(
-        alignmentOffset: const Offset(0, -8),
-        menuChildren: [
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.person_add_outlined),
-            onPressed: _showClientForm,
-            child: const Text('New client'),
-          ),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.work_outline),
-            onPressed: _openProjectFormFromMenu,
-            child: const Text('New project'),
-          ),
-        ],
-        builder: (context, controller, child) {
-          return FloatingActionButton.small(
-            tooltip: 'Just +',
-            onPressed: () {
-              if (controller.isOpen) {
-                controller.close();
-              } else {
-                controller.open();
-              }
-            },
-            child: const Icon(Icons.add),
-          );
-        },
+      floatingActionButton: FloatingActionButton.small(
+        tooltip: 'Just +',
+        onPressed: _showQuickAddSheet,
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -589,6 +566,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  void _showQuickAddSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 4,
+                  width: 40,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.person_add_outlined),
+                  title: const Text('Add client'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _showClientForm();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.work_outline),
+                  title: const Text('Add project'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _openProjectFormFromMenu();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.payments_outlined),
+                  title: const Text('Add payment'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _openPaymentFormFromMenu();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1543,7 +1574,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isArchived: false,
       createdAt: now,
       updatedAt: now,
-      avatarColorHex: _randomAvatarColorHex(),
+      avatarColorHex: generateClientColorHex(_random),
       retainerSettings: retainerSettings,
     );
 
@@ -1630,7 +1661,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           isArchived: false,
           createdAt: now,
           updatedAt: now,
-          avatarColorHex: _randomAvatarColorHex(),
+          avatarColorHex: generateClientColorHex(_random),
           retainerSettings: retainerSettings,
         ),
       );
@@ -1662,6 +1693,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     _showProjectForm();
+  }
+
+  void _openPaymentFormFromMenu() {
+    final hasProjects = _projects.any(
+      (project) =>
+          _clientById(project.clientId)?.isArchived != true && !project.isArchived,
+    );
+    if (!hasProjects) {
+      _showSnackBar(context, 'Create a project first');
+      return;
+    }
+    _showPaymentForm();
   }
 
   void _showProjectForm() {
@@ -2337,19 +2380,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : const Color(0xFFD9E4EC);
   }
 
-  Color _clientAvatarColor(Client client) {
-    if (client.avatarColorHex.isEmpty) {
-      return _clientAvatarPalette.first;
+  Color _clientColor(Client client) {
+    return resolveClientColor(client);
+  }
+
+  Color _clientColorForId(String clientId) {
+    final client = _clientById(clientId);
+    if (client == null) {
+      return Theme.of(context).colorScheme.surfaceVariant;
     }
-    return _colorFromHex(client.avatarColorHex);
+    return _clientColor(client);
+  }
+
+  Color _clientAvatarColor(Client client) {
+    return _clientColor(client);
   }
 
   Color _paymentPillColor(BuildContext context, _PaymentPillItem item) {
-    final client = _clientById(item.clientId);
-    if (client != null) {
-      return _clientTagColor(client);
-    }
-    return Theme.of(context).colorScheme.surfaceVariant;
+    return _clientColorForId(item.clientId);
   }
 
   String _clientInitials(String name) {
@@ -2386,7 +2434,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isArchived: client.isArchived,
         createdAt: client.createdAt,
         updatedAt: client.updatedAt,
-        avatarColorHex: _randomAvatarColorHex(),
+        avatarColorHex: generateClientColorHex(_random),
         retainerSettings: client.retainerSettings,
       );
     }).toList();
@@ -2395,22 +2443,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       clients: updatedClients,
       updated: updated,
     );
-  }
-
-  String _randomAvatarColorHex() {
-    final color = _clientAvatarPalette[_random.nextInt(_clientAvatarPalette.length)];
-    return _colorToHex(color);
-  }
-
-  Color _colorFromHex(String hex) {
-    final cleaned = hex.replaceAll('#', '');
-    final value = int.parse(cleaned, radix: 16);
-    return Color(0xFF000000 | value);
-  }
-
-  String _colorToHex(Color color) {
-    final raw = color.value.toRadixString(16).padLeft(8, '0');
-    return '#${raw.substring(2).toUpperCase()}';
   }
 
   double _clientTotalAmount(Client client) {
@@ -3166,9 +3198,6 @@ class _ClientCard extends StatelessWidget {
     required this.tagColor,
     required this.avatarColor,
     required this.onTap,
-    required this.onEdit,
-    required this.onArchive,
-    required this.onDuplicate,
   });
 
   final Client client;
@@ -3180,9 +3209,6 @@ class _ClientCard extends StatelessWidget {
   final Color tagColor;
   final Color avatarColor;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onArchive;
-  final VoidCallback onDuplicate;
 
   @override
   Widget build(BuildContext context) {
@@ -3217,6 +3243,7 @@ class _ClientCard extends StatelessWidget {
                         color: Theme.of(context).colorScheme.onPrimary,
                       ),
                 ),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -3265,33 +3292,6 @@ class _ClientCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_horiz),
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    onEdit();
-                  } else if (value == 'archive') {
-                    onArchive();
-                  } else if (value == 'duplicate') {
-                    onDuplicate();
-                  }
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: 'edit',
-                    child: Text('Edit'),
-                  ),
-                  PopupMenuItem(
-                    value: 'archive',
-                    child: Text('Archive'),
-                  ),
-                  PopupMenuItem(
-                    value: 'duplicate',
-                    child: Text('Duplicate'),
                   ),
                 ],
               ),
