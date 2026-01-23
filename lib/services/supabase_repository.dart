@@ -15,6 +15,7 @@ class SupabaseRepository {
   SupabaseRepository(this._client);
 
   final SupabaseClient _client;
+  bool _supportsAvatarColorColumn = true;
 
   User? get currentUser => _client.auth.currentUser;
 
@@ -65,21 +66,43 @@ class SupabaseRepository {
 
   Future<List<Map<String, dynamic>>> fetchClientRows() async {
     final userId = _requireUserId();
-    final clientRows = await _runSupabase(
-      table: 'clients',
-      operation: 'select',
-      payload: {'user_id': userId},
-      action: () async {
-        return _client
-            .from('clients')
-            .select()
-            .eq('user_id', userId)
-            .order('created_at');
-      },
-    );
-    return clientRows
-        .map<Map<String, dynamic>>((row) => row as Map<String, dynamic>)
-        .toList();
+    try {
+      final clientRows = await _runSupabase(
+        table: 'clients',
+        operation: 'select',
+        payload: {'user_id': userId},
+        action: () async {
+          return _client
+              .from('clients')
+              .select()
+              .eq('user_id', userId)
+              .order('created_at');
+        },
+      );
+      return clientRows
+          .map<Map<String, dynamic>>((row) => row as Map<String, dynamic>)
+          .toList();
+    } on PostgrestException catch (error) {
+      if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
+        _supportsAvatarColorColumn = false;
+        final fallbackRows = await _runSupabase(
+          table: 'clients',
+          operation: 'select',
+          payload: {'user_id': userId, 'fallback': true},
+          action: () async {
+            return _client
+                .from('clients')
+                .select(_clientFallbackColumns())
+                .eq('user_id', userId)
+                .order('created_at');
+          },
+        );
+        return fallbackRows
+            .map<Map<String, dynamic>>((row) => row as Map<String, dynamic>)
+            .toList();
+      }
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchRetainerSettingsRows() async {
@@ -265,15 +288,37 @@ class SupabaseRepository {
       );
     }
 
-    if (clients.isNotEmpty) {
-      await _runSupabase(
-        table: 'clients',
-        operation: 'upsert',
-        payload: {'rows': clients.length},
-        action: () async {
-          return _client.from('clients').upsert(clients);
-        },
-      );
+    final clientPayload = _supportsAvatarColorColumn
+        ? clients
+        : _stripAvatarColorFromRows(clients);
+    if (clientPayload.isNotEmpty) {
+      try {
+        await _runSupabase(
+          table: 'clients',
+          operation: 'upsert',
+          payload: {'rows': clientPayload.length},
+          action: () async {
+            return _client.from('clients').upsert(clientPayload);
+          },
+        );
+      } on PostgrestException catch (error) {
+        if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
+          _supportsAvatarColorColumn = false;
+          final fallbackClients = _stripAvatarColorFromRows(clients);
+          if (fallbackClients.isNotEmpty) {
+            await _runSupabase(
+              table: 'clients',
+              operation: 'upsert',
+              payload: {'rows': fallbackClients.length, 'fallback': true},
+              action: () async {
+                return _client.from('clients').upsert(fallbackClients);
+              },
+            );
+          }
+        } else {
+          rethrow;
+        }
+      }
     }
     if (retainers.isNotEmpty) {
       await _runSupabase(
@@ -335,14 +380,35 @@ class SupabaseRepository {
         .map((client) => _clientToRow(client, userId))
         .toList();
     if (payload.isNotEmpty) {
-      await _runSupabase(
-        table: 'clients',
-        operation: 'upsert',
-        payload: {'rows': payload.length},
-        action: () async {
-          return _client.from('clients').upsert(payload);
-        },
-      );
+      try {
+        await _runSupabase(
+          table: 'clients',
+          operation: 'upsert',
+          payload: {'rows': payload.length},
+          action: () async {
+            return _client.from('clients').upsert(payload);
+          },
+        );
+      } on PostgrestException catch (error) {
+        if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
+          _supportsAvatarColorColumn = false;
+          final fallbackPayload = clients
+              .map((client) => _clientToRow(client, userId))
+              .toList();
+          if (fallbackPayload.isNotEmpty) {
+            await _runSupabase(
+              table: 'clients',
+              operation: 'upsert',
+              payload: {'rows': fallbackPayload.length, 'fallback': true},
+              action: () async {
+                return _client.from('clients').upsert(fallbackPayload);
+              },
+            );
+          }
+        } else {
+          rethrow;
+        }
+      }
     }
 
     final retainerExisting = await _runSupabase(
@@ -501,7 +567,7 @@ class SupabaseRepository {
   }
 
   Map<String, dynamic> _clientToRow(Client client, String userId) {
-    return {
+    final payload = {
       'id': client.id,
       'user_id': userId,
       'name': client.name,
@@ -511,10 +577,13 @@ class SupabaseRepository {
       'email': client.email,
       'telegram': client.telegram,
       'planned_budget': client.plannedBudget,
-      'avatar_color': client.avatarColorHex,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
+    if (_supportsAvatarColorColumn) {
+      payload['avatar_color'] = client.avatarColorHex;
+    }
+    return payload;
   }
 
   Map<String, dynamic> _retainerToRow(Client client, String userId) {
@@ -681,6 +750,29 @@ class SupabaseRepository {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
+  }
+
+  String _clientFallbackColumns() {
+    return 'id,user_id,name,type,contact_person,phone,email,telegram,planned_budget,'
+        'created_at,updated_at';
+  }
+
+  bool _isAvatarColorMissing(PostgrestException error) {
+    return error.code == 'PGRST204' &&
+        error.message.toLowerCase().contains('avatar_color');
+  }
+
+  List<Map<String, dynamic>> _stripAvatarColorFromRows(
+    List<Map<String, dynamic>> rows,
+  ) {
+    return rows
+        .map(
+          (row) => {
+            for (final entry in row.entries)
+              if (entry.key != 'avatar_color') entry.key: entry.value,
+          },
+        )
+        .toList();
   }
 
   Future<T> _runSupabase<T>({
