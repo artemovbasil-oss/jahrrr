@@ -18,6 +18,7 @@ class SupabaseRepository {
 
   final SupabaseClient _client;
   final Random _random = Random();
+  bool _supportsAvatarColorColumn = true;
 
   User? get currentUser => _client.auth.currentUser;
 
@@ -596,12 +597,11 @@ class SupabaseRepository {
       'email': client.email,
       'telegram': client.telegram,
       'planned_budget': client.plannedBudget,
-      'color': client.avatarColorHex,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
     if (_supportsAvatarColorColumn) {
-      payload['avatar_color'] = client.avatarColorHex;
+      payload['color'] = client.avatarColorHex;
     }
     return payload;
   }
@@ -779,7 +779,8 @@ class SupabaseRepository {
 
   bool _isAvatarColorMissing(PostgrestException error) {
     return error.code == 'PGRST204' &&
-        error.message.toLowerCase().contains('avatar_color');
+        (error.message.toLowerCase().contains('avatar_color') ||
+            error.message.toLowerCase().contains('color'));
   }
 
   List<Map<String, dynamic>> _stripAvatarColorFromRows(
@@ -789,7 +790,7 @@ class SupabaseRepository {
         .map(
           (row) => {
             for (final entry in row.entries)
-              if (entry.key != 'avatar_color') entry.key: entry.value,
+              if (entry.key != 'color') entry.key: entry.value,
           },
         )
         .toList();
