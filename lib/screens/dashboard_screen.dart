@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -31,7 +33,25 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+class _AvatarColorUpdate {
+  const _AvatarColorUpdate({
+    required this.clients,
+    required this.updated,
+  });
+
+  final List<Client> clients;
+  final bool updated;
+}
+
 class _DashboardScreenState extends State<DashboardScreen> {
+  static const List<Color> _clientAvatarPalette = [
+    Color(0xFF2D6EF8),
+    Color(0xFF1FA85B),
+    Color(0xFFB8432D),
+    Color(0xFF8D9BA7),
+    Color(0xFF6F3CC3),
+    Color(0xFF16A3B7),
+  ];
   static const Map<String, String> _paymentKindLabels = {
     'deposit': 'Deposit',
     'milestone': 'Milestone',
@@ -76,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _searchQuery = '';
   UserProfile? _profile;
   late final SupabaseRepository _repository;
+  final Random _random = Random();
 
   final List<Client> _clients = [];
   final List<Project> _projects = [];
@@ -201,37 +222,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Row(
                       children: [
                         Expanded(
-                      child: Text(
-                        project.title,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      project.deadlineDate == null
-                          ? '—'
-                              : _formatDate(project.deadlineDate!),
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          child: Text(
+                            project.title,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _formatCurrency(project.amount),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
                               ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _clientNameForId(project.clientId),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceVariant
+                                  .withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              _clientNameForId(project.clientId),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -245,22 +283,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             projectStageLabels[project.status] ?? project.status,
                             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                   fontWeight: FontWeight.w600,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _formatCurrency(project.amount),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: LinearProgressIndicator(
@@ -316,23 +346,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final clientWidgets = _isLoading
         ? _buildLoadingClientCards()
         : filteredClients.isEmpty
-            ? [_buildEmptyState('Add a client to get started.')]
-            : filteredClients
-                .map(
-                  (client) => _ClientCard(
-                    client: client,
-                    isRetainer: _isRetainerClient(client),
-                    initials: _clientInitials(client.name),
-                    typeLabel: _clientTypeLabel(client),
-                    formattedAmount: _formatCurrency(_clientTotalAmount(client)),
-                    cardColor: _clientCardColor(context, client),
-                    tagColor: _clientTagColor(client),
-                    onTap: () => _openClientDetails(client),
-                    onEdit: () => _showEditClientForm(client),
-                    onArchive: () => _archiveClient(client),
-                    onDuplicate: () => _duplicateClient(client),
-                  ),
-                )
+                ? [_buildEmptyState('Add a client to get started.')]
+                : filteredClients
+                    .map(
+                      (client) => _ClientCard(
+                        client: client,
+                        isRetainer: _isRetainerClient(client),
+                        initials: _clientInitials(client.name),
+                        typeLabel: _clientTypeLabel(client),
+                        formattedAmount: _formatCurrency(_clientTotalAmount(client)),
+                        cardColor: _clientCardColor(context, client),
+                        tagColor: _clientTagColor(client),
+                        avatarColor: _clientAvatarColor(client),
+                        onTap: () => _openClientDetails(client),
+                        onEdit: () => _showEditClientForm(client),
+                        onArchive: () => _archiveClient(client),
+                        onDuplicate: () => _duplicateClient(client),
+                      ),
+                    )
                 .toList();
 
     return Scaffold(
@@ -616,13 +647,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final clients = await _repository.fetchClients();
       final projects = await _repository.fetchProjects();
       final payments = await _repository.fetchProjectPayments();
+      final ensuredClients = _ensureClientAvatarColors(clients);
+      if (ensuredClients.updated) {
+        await _repository.syncAll(
+          clients: ensuredClients.clients,
+          projects: projects,
+          payments: payments,
+        );
+      }
       if (!mounted) {
         return;
       }
       setState(() {
         _clients
           ..clear()
-          ..addAll(clients);
+          ..addAll(ensuredClients.clients);
         _projects
           ..clear()
           ..addAll(projects);
@@ -994,8 +1033,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _selectedContractType == 'retainer'
-                              ? 'Retainer amount (€)'
-                              : 'Planned budget (€) (optional)',
+                              ? 'Retainer amount (\\$)'
+                              : 'Planned budget (\\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1207,8 +1246,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _isRetainerClient(client)
-                              ? 'Retainer amount (€)'
-                              : 'Planned budget (€) (optional)',
+                              ? 'Retainer amount (\\$)'
+                              : 'Planned budget (\\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1394,6 +1433,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isArchived: client.isArchived,
       createdAt: client.createdAt,
       updatedAt: now,
+      avatarColorHex: client.avatarColorHex,
       retainerSettings: retainerSettings,
     );
     await _updateClient(updatedClient);
@@ -1503,6 +1543,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isArchived: false,
       createdAt: now,
       updatedAt: now,
+      avatarColorHex: _randomAvatarColorHex(),
       retainerSettings: retainerSettings,
     );
 
@@ -1589,6 +1630,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           isArchived: false,
           createdAt: now,
           updatedAt: now,
+          avatarColorHex: _randomAvatarColorHex(),
           retainerSettings: retainerSettings,
         ),
       );
@@ -1689,7 +1731,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _projectAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Project amount (€)',
+                          labelText: 'Project amount (\\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1842,7 +1884,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _paymentAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Payment amount (€)',
+                          labelText: 'Payment amount (\\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -2222,6 +2264,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           isArchived: true,
           createdAt: client.createdAt,
           updatedAt: DateTime.now(),
+          avatarColorHex: client.avatarColorHex,
           retainerSettings: client.retainerSettings,
         );
       }
@@ -2294,6 +2337,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : const Color(0xFFD9E4EC);
   }
 
+  Color _clientAvatarColor(Client client) {
+    if (client.avatarColorHex.isEmpty) {
+      return _clientAvatarPalette.first;
+    }
+    return _colorFromHex(client.avatarColorHex);
+  }
+
   Color _paymentPillColor(BuildContext context, _PaymentPillItem item) {
     final client = _clientById(item.clientId);
     if (client != null) {
@@ -2315,6 +2365,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return letters.length >= 2
         ? letters.substring(0, 2).toUpperCase()
         : letters.substring(0, 1).toUpperCase();
+  }
+
+  _AvatarColorUpdate _ensureClientAvatarColors(List<Client> clients) {
+    var updated = false;
+    final updatedClients = clients.map((client) {
+      if (client.avatarColorHex.isNotEmpty) {
+        return client;
+      }
+      updated = true;
+      return Client(
+        id: client.id,
+        name: client.name,
+        type: client.type,
+        contactPerson: client.contactPerson,
+        phone: client.phone,
+        email: client.email,
+        telegram: client.telegram,
+        plannedBudget: client.plannedBudget,
+        isArchived: client.isArchived,
+        createdAt: client.createdAt,
+        updatedAt: client.updatedAt,
+        avatarColorHex: _randomAvatarColorHex(),
+        retainerSettings: client.retainerSettings,
+      );
+    }).toList();
+
+    return _AvatarColorUpdate(
+      clients: updatedClients,
+      updated: updated,
+    );
+  }
+
+  String _randomAvatarColorHex() {
+    final color = _clientAvatarPalette[_random.nextInt(_clientAvatarPalette.length)];
+    return _colorToHex(color);
+  }
+
+  Color _colorFromHex(String hex) {
+    final cleaned = hex.replaceAll('#', '');
+    final value = int.parse(cleaned, radix: 16);
+    return Color(0xFF000000 | value);
+  }
+
+  String _colorToHex(Color color) {
+    final raw = color.value.toRadixString(16).padLeft(8, '0');
+    return '#${raw.substring(2).toUpperCase()}';
   }
 
   double _clientTotalAmount(Client client) {
@@ -2845,7 +2941,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       (match) => '${match[1]},',
     );
     final prefix = rounded < 0 ? '-' : '';
-    return '€$prefix$formatted';
+    return '\$$prefix$formatted';
   }
 
   double _projectStageProgress(String stage) {
@@ -3068,6 +3164,7 @@ class _ClientCard extends StatelessWidget {
     required this.formattedAmount,
     required this.cardColor,
     required this.tagColor,
+    required this.avatarColor,
     required this.onTap,
     required this.onEdit,
     required this.onArchive,
@@ -3081,6 +3178,7 @@ class _ClientCard extends StatelessWidget {
   final String formattedAmount;
   final Color cardColor;
   final Color tagColor;
+  final Color avatarColor;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
@@ -3110,13 +3208,13 @@ class _ClientCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
-                backgroundColor: tagColor,
+                backgroundColor: avatarColor,
                 radius: 18,
                 child: Text(
                   initials,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: Theme.of(context).colorScheme.onSurface,
+                        color: Theme.of(context).colorScheme.onPrimary,
                       ),
                 ),
               ),

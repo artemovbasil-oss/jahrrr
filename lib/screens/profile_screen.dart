@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../app.dart';
 import '../models/user_profile.dart';
 import '../services/supabase_repository.dart';
 import '../widgets/user_avatar.dart';
@@ -190,6 +191,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final profile = widget.profile;
     final displayName = profile?.displayName ?? 'Your profile';
+    final themeController = AppThemeScope.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -276,6 +278,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Appearance',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile.adaptive(
+            value: themeController.isDarkMode,
+            title: const Text('Dark theme'),
+            subtitle: const Text('Toggle between light and dark modes.'),
+            onChanged: (value) async {
+              await themeController.setDarkMode(value);
+            },
           ),
           const SizedBox(height: 24),
           Text(
