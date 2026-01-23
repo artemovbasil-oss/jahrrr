@@ -777,7 +777,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint(
         'Bootstrap failed source=${failure.source} message=${error.message} '
         'code=${error.code} details=${error.details} hint=${error.hint} '
-        'status=${error.status} user_id=$userId session=${session != null}',
+        'user_id=$userId session=${session != null}',
       );
     } else {
       debugPrint(
@@ -795,7 +795,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (error.code != null) 'code=${error.code}',
         if (error.details != null) 'details=${error.details}',
         if (error.hint != null) 'hint=${error.hint}',
-        if (error.status != null) 'status=${error.status}',
       ].join(', ');
       return 'Supabase ${failure.source} failed: $detailParts';
     }
