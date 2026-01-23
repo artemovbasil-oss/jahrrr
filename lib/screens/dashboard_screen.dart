@@ -3217,7 +3217,6 @@ class _ClientCard extends StatelessWidget {
                         color: Theme.of(context).colorScheme.onPrimary,
                       ),
                 ),
-              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
