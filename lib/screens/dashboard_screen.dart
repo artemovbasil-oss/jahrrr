@@ -1033,8 +1033,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _selectedContractType == 'retainer'
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1246,8 +1246,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _isRetainerClient(client)
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1731,7 +1731,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _projectAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Project amount (\\$)',
+                          labelText: 'Project amount (\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1884,7 +1884,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _paymentAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Payment amount (\\$)',
+                          labelText: 'Payment amount (\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -3217,6 +3217,7 @@ class _ClientCard extends StatelessWidget {
                         color: Theme.of(context).colorScheme.onPrimary,
                       ),
                 ),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
