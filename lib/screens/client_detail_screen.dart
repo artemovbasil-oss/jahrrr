@@ -306,7 +306,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete client'),
-        content: const Text('This will permanently delete the client and its data.'),
+        content: const Text('This will delete the client and its projects and payments.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -712,7 +712,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       return;
     }
     setState(() {
-      _projects.removeWhere((item) => item.id == project.id);
+      _projects.remove(project);
       _payments.removeWhere((payment) => payment.projectId == project.id);
     });
   }
@@ -1153,6 +1153,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     } else {
       for (final payment in _payments) {
         final project = _projectForPayment(payment);
+        if (project == null) {
+          continue;
+        }
         if (payment.status == 'planned') {
           final dueDate = payment.dueDate ?? payment.createdAt;
           combined.add(

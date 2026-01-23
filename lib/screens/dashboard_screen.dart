@@ -1829,9 +1829,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Client> _projectEligibleClients() {
-    return _clients
-        .where((client) => !_isRetainerClient(client))
-        .toList();
+    return _clients.where((client) => !_isRetainerClient(client)).toList();
   }
 
   void _openProjectFormFromMenu() {
@@ -1848,8 +1846,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _openPaymentFormFromMenu() {
     final hasProjects = _projects.any(
-      (project) =>
-          _clientById(project.clientId)?.isArchived != true && !project.isArchived,
+      (project) => _clientById(project.clientId) != null,
     );
     if (!hasProjects) {
       _showSnackBar(context, 'Create a project first');
@@ -2032,11 +2029,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final projectOptions = _projects
-                .where(
-                  (project) => _clientById(project.clientId) != null,
-                )
-                .toList();
+            final projectOptions =
+                _projects.where((project) => _clientById(project.clientId) != null).toList();
             return AlertDialog(
               title: const Text('New payment'),
               content: Form(
@@ -2345,7 +2339,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _deleteProject(Project project) async {
     setState(() {
-      _projects.removeWhere((item) => item.id == project.id);
+      _projects.remove(project);
       _projectPayments.removeWhere((payment) => payment.projectId == project.id);
     });
     await _persistData();
@@ -2428,7 +2422,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _deleteClient(Client client) async {
     setState(() {
-      _clients.removeWhere((item) => item.id == client.id);
+      _clients.remove(client);
       final projectIds = _projects
           .where((project) => project.clientId == client.id)
           .map((project) => project.id)
