@@ -500,9 +500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             actionLabel: 'Add',
             onActionPressed: () {
               final hasProjects = _projects.any(
-                (project) =>
-                    _clientById(project.clientId)?.isArchived != true &&
-                    !project.isArchived,
+                (project) => _clientById(project.clientId) != null,
               );
               if (!hasProjects) {
                 _showSnackBar(context, 'Create a project first');
@@ -1461,7 +1459,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       email: contactEmail.isEmpty ? null : contactEmail,
       telegram: contactTelegram.isEmpty ? null : contactTelegram,
       plannedBudget: _isRetainerClient(client) ? null : plannedBudget,
-      isArchived: client.isArchived,
       createdAt: client.createdAt,
       updatedAt: now,
       avatarColorHex: client.avatarColorHex,
@@ -1571,7 +1568,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       email: client.email,
       telegram: client.telegram,
       plannedBudget: client.plannedBudget,
-      isArchived: false,
       createdAt: now,
       updatedAt: now,
       avatarColorHex: generateClientColorHex(_random),
@@ -1581,9 +1577,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _clients.add(duplicatedClient);
       if (!_isRetainerClient(client) && copyWithAllSettings) {
-        final projectsToCopy = _projects
-            .where((project) => project.clientId == client.id && !project.isArchived)
-            .toList();
+        final projectsToCopy =
+            _projects.where((project) => project.clientId == client.id).toList();
         final projectIdMap = <String, String>{};
         for (final project in projectsToCopy) {
           final newProjectId = _generateId();
@@ -1595,7 +1590,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: project.title,
               amount: project.amount,
               status: project.status,
-              isArchived: false,
               deadlineDate: project.deadlineDate,
               createdAt: now,
               updatedAt: now,
@@ -1658,7 +1652,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           email: contactEmail.isEmpty ? null : contactEmail,
           telegram: contactTelegram.isEmpty ? null : contactTelegram,
           plannedBudget: contractType == 'project' ? plannedBudget : null,
-          isArchived: false,
           createdAt: now,
           updatedAt: now,
           avatarColorHex: generateClientColorHex(_random),
@@ -1678,9 +1671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Client> _projectEligibleClients() {
-    return _clients
-        .where((client) => !client.isArchived && !_isRetainerClient(client))
-        .toList();
+    return _clients.where((client) => !_isRetainerClient(client)).toList();
   }
 
   void _openProjectFormFromMenu() {
@@ -1697,8 +1688,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _openPaymentFormFromMenu() {
     final hasProjects = _projects.any(
-      (project) =>
-          _clientById(project.clientId)?.isArchived != true && !project.isArchived,
+      (project) => _clientById(project.clientId) != null,
     );
     if (!hasProjects) {
       _showSnackBar(context, 'Create a project first');
@@ -1881,13 +1871,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final projectOptions = _projects
-                .where(
-                  (project) =>
-                      _clientById(project.clientId)?.isArchived != true &&
-                      !project.isArchived,
-                )
-                .toList();
+            final projectOptions =
+                _projects.where((project) => _clientById(project.clientId) != null).toList();
             return AlertDialog(
               title: const Text('New payment'),
               content: Form(
@@ -2155,7 +2140,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: title,
       amount: amount,
       status: stage,
-      isArchived: false,
       deadlineDate: deadline,
       createdAt: now,
       updatedAt: now,
@@ -2195,22 +2179,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _archiveProject(Project project) async {
+  Future<void> _deleteProject(Project project) async {
     setState(() {
-      final index = _projects.indexWhere((item) => item.id == project.id);
-      if (index != -1) {
-        _projects[index] = Project(
-          id: project.id,
-          clientId: project.clientId,
-          title: project.title,
-          amount: project.amount,
-          status: project.status,
-          isArchived: true,
-          deadlineDate: project.deadlineDate,
-          createdAt: project.createdAt,
-          updatedAt: DateTime.now(),
-        );
-      }
+      _projects.remove(project);
+      _projectPayments.removeWhere((payment) => payment.projectId == project.id);
     });
     await _persistData();
   }
@@ -2257,7 +2229,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: newTitle,
       amount: project.amount,
       status: project.status,
-      isArchived: false,
       deadlineDate: project.deadlineDate,
       createdAt: now,
       updatedAt: now,
@@ -2291,26 +2262,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return duplicated;
   }
 
-  Future<void> _archiveClient(Client client) async {
+  Future<void> _deleteClient(Client client) async {
     setState(() {
-      final index = _clients.indexWhere((item) => item.id == client.id);
-      if (index != -1) {
-        _clients[index] = Client(
-          id: client.id,
-          name: client.name,
-          type: client.type,
-          contactPerson: client.contactPerson,
-          phone: client.phone,
-          email: client.email,
-          telegram: client.telegram,
-          plannedBudget: client.plannedBudget,
-          isArchived: true,
-          createdAt: client.createdAt,
-          updatedAt: DateTime.now(),
-          avatarColorHex: client.avatarColorHex,
-          retainerSettings: client.retainerSettings,
-        );
-      }
+      _clients.remove(client);
+      final projectIds = _projects
+          .where((project) => project.clientId == client.id)
+          .map((project) => project.id)
+          .toSet();
+      _projects.removeWhere((project) => project.clientId == client.id);
+      _projectPayments
+          .removeWhere((payment) => projectIds.contains(payment.projectId));
     });
     await _persistData();
   }
@@ -2334,7 +2295,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           payments: clientPayments,
           openRetainerSettings: openRetainerSettings,
           isLoading: _isLoading,
-          onDeleteClient: () => _archiveClient(client),
+          onDeleteClient: () => _deleteClient(client),
           onUpdateClient: _updateClient,
           onDuplicateClient: (source, newName, copyWithAllSettings) =>
               _duplicateClientWithName(source, newName, copyWithAllSettings),
@@ -2342,7 +2303,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onDeletePayment: _deleteProjectPayment,
           onDuplicateProject: _duplicateProject,
           onUpdateProject: _updateProject,
-          onDeleteProject: _archiveProject,
+          onDeleteProject: _deleteProject,
         ),
       ),
     );
@@ -2431,7 +2392,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         email: client.email,
         telegram: client.telegram,
         plannedBudget: client.plannedBudget,
-        isArchived: client.isArchived,
         createdAt: client.createdAt,
         updatedAt: client.updatedAt,
         avatarColorHex: generateClientColorHex(_random),
@@ -2450,7 +2410,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return client.retainerSettings?.amount ?? 0;
     }
     final projectIds = _projects
-        .where((project) => project.clientId == client.id && !project.isArchived)
+        .where((project) => project.clientId == client.id)
         .map((project) => project.id)
         .toSet();
     final plannedSum = _projectPayments
@@ -2460,7 +2420,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return plannedSum;
     }
     final projectAmountSum = _projects
-        .where((project) => project.clientId == client.id && !project.isArchived)
+        .where((project) => project.clientId == client.id)
         .fold<double>(0, (sum, project) => sum + project.amount);
     return projectAmountSum == 0 ? (client.plannedBudget ?? 0) : projectAmountSum;
   }
@@ -2473,7 +2433,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             (item) => item?.name == entry.client,
             orElse: () => null,
           );
-      if (client == null || client.isArchived) {
+      if (client == null) {
         continue;
       }
       upcoming.add(
@@ -2496,7 +2456,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         continue;
       }
       final project = _projectById(payment.projectId);
-      if (project == null || project.isArchived) {
+      if (project == null) {
         continue;
       }
       if (project.status != 'deposit_received' &&
@@ -2504,7 +2464,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         continue;
       }
       final client = _clientById(project.clientId);
-      if (client == null || client.isArchived) {
+      if (client == null) {
         continue;
       }
       upcoming.add(
@@ -2570,7 +2530,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Client> _visibleClients() {
-    return _clients.where((client) => !client.isArchived).toList();
+    return _clients.toList();
   }
 
   Client? _clientById(String id) {
@@ -2592,13 +2552,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool _isActiveProject(Project project) {
-    return !project.isArchived && project.status != 'payment_received_in_full';
+    return project.status != 'payment_received_in_full';
   }
 
   List<Project> _activeProjects() {
     return _projects.where((project) {
       final client = _clientById(project.clientId);
-      return client != null && !client.isArchived && _isActiveProject(project);
+      return client != null && _isActiveProject(project);
     }).toList();
   }
 
@@ -2653,15 +2613,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (project == null) {
         return false;
       }
-      if (project.isArchived) {
-        return false;
-      }
       if (project.status != 'deposit_received' &&
           project.status != 'payment_received_in_full') {
         return false;
       }
       final client = _clientById(project.clientId);
-      return client != null && !client.isArchived;
+      return client != null;
     }).fold<double>(0, (sum, payment) => sum + payment.amount);
   }
 
@@ -2737,7 +2694,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: 'Debug project ${now.toIso8601String()}',
       amount: 1,
       status: 'first_meeting',
-      isArchived: false,
       deadlineDate: null,
       createdAt: now,
       updatedAt: now,
@@ -2877,15 +2833,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (project == null) {
         return false;
       }
-      if (project.isArchived) {
-        return false;
-      }
       if (project.status != 'deposit_received' &&
           project.status != 'payment_received_in_full') {
         return false;
       }
       final client = _clientById(project.clientId);
-      return client != null && !client.isArchived;
+      return client != null;
     }).toList();
 
     _showListSheet(

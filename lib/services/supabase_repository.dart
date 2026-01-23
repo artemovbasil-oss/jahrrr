@@ -319,7 +319,7 @@ class SupabaseRepository {
       return [];
     }
     return raw.whereType<Map<String, dynamic>>().map((row) {
-      final storedColor = (row['color'] ?? row['avatar_color']) as String?;
+      final storedColor = row['color'] as String? ?? row['avatar_color'] as String?;
       final normalizedColor = storedColor != null && storedColor.isNotEmpty
           ? storedColor
           : generateClientColorHex(_random);
@@ -327,7 +327,6 @@ class SupabaseRepository {
         ...row,
         'user_id': userId,
         'color': normalizedColor,
-        'avatar_color': normalizedColor,
       };
     }).toList();
   }
@@ -343,9 +342,7 @@ class SupabaseRepository {
       'email': client.email,
       'telegram': client.telegram,
       'planned_budget': client.plannedBudget,
-      'is_archived': client.isArchived,
       'color': client.avatarColorHex,
-      'avatar_color': client.avatarColorHex,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
@@ -456,9 +453,7 @@ class SupabaseRepository {
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
-      isArchived: row['is_archived'] as bool? ?? false,
-      avatarColorHex:
-          row['color'] as String? ?? row['avatar_color'] as String? ?? '',
+      avatarColorHex: row['color'] as String? ?? row['avatar_color'] as String? ?? '',
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
@@ -474,7 +469,6 @@ class SupabaseRepository {
       title: row['title'] as String? ?? '',
       amount: (row['amount'] as num?)?.toDouble() ?? 0,
       status: row['status'] as String? ?? '',
-      isArchived: row['is_archived'] as bool? ?? false,
       deadlineDate: row['deadline_date'] == null
           ? null
           : DateTime.tryParse(row['deadline_date']?.toString() ?? ''),
@@ -614,7 +608,6 @@ class SupabaseRepository {
         .from('clients')
         .select('id')
         .eq('user_id', userId)
-        .eq('is_archived', false)
         .neq('type', 'retainer')
         .order('created_at')
         .limit(1)
