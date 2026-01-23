@@ -323,6 +323,7 @@ class SupabaseRepository {
       'telegram': client.telegram,
       'planned_budget': client.plannedBudget,
       'is_archived': client.isArchived,
+      'avatar_color': client.avatarColorHex,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
@@ -434,6 +435,7 @@ class SupabaseRepository {
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
       isArchived: row['is_archived'] as bool? ?? false,
+      avatarColorHex: row['avatar_color'] as String? ?? '',
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
