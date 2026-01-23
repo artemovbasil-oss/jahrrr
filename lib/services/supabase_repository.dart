@@ -573,7 +573,7 @@ class SupabaseRepository {
       return [];
     }
     return raw.whereType<Map<String, dynamic>>().map((row) {
-      final storedColor = (row['color'] ?? row['avatar_color']) as String?;
+      final storedColor = row['color'] as String? ?? row['avatar_color'] as String?;
       final normalizedColor = storedColor != null && storedColor.isNotEmpty
           ? storedColor
           : generateClientColorHex(_random);
@@ -581,7 +581,6 @@ class SupabaseRepository {
         ...row,
         'user_id': userId,
         'color': normalizedColor,
-        'avatar_color': normalizedColor,
       };
     }).toList();
   }
@@ -597,9 +596,7 @@ class SupabaseRepository {
       'email': client.email,
       'telegram': client.telegram,
       'planned_budget': client.plannedBudget,
-      'is_archived': client.isArchived,
       'color': client.avatarColorHex,
-      'avatar_color': client.avatarColorHex,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
@@ -714,9 +711,7 @@ class SupabaseRepository {
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
-      isArchived: row['is_archived'] as bool? ?? false,
-      avatarColorHex:
-          row['color'] as String? ?? row['avatar_color'] as String? ?? '',
+      avatarColorHex: row['color'] as String? ?? row['avatar_color'] as String? ?? '',
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
@@ -929,21 +924,14 @@ class SupabaseRepository {
 
   Future<String?> fetchFirstEligibleClientId() async {
     final userId = _requireUserId();
-    final row = await _runSupabase(
-      table: 'clients',
-      operation: 'select',
-      payload: {'user_id': userId, 'columns': ['id']},
-      action: () async {
-        return _client
-            .from('clients')
-            .select('id')
-            .eq('user_id', userId)
-            .neq('type', 'retainer')
-            .order('created_at')
-            .limit(1)
-            .maybeSingle();
-      },
-    );
+    final row = await _client
+        .from('clients')
+        .select('id')
+        .eq('user_id', userId)
+        .neq('type', 'retainer')
+        .order('created_at')
+        .limit(1)
+        .maybeSingle();
     return row == null ? null : row['id'] as String?;
   }
 }

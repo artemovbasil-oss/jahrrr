@@ -77,7 +77,6 @@ class Client {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'color': avatarColorHex,
-      'avatarColorHex': avatarColorHex,
       'retainerSettings': retainerSettings?.toJson(),
     };
   }
