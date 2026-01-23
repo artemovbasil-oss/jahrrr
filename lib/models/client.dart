@@ -5,7 +5,6 @@ class Client {
     required this.id,
     required this.name,
     required this.type,
-    required this.isArchived,
     required this.createdAt,
     required this.updatedAt,
     required this.avatarColorHex,
@@ -20,7 +19,6 @@ class Client {
   final String id;
   final String name;
   final String type;
-  final bool isArchived;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String avatarColorHex;
@@ -57,7 +55,6 @@ class Client {
       email: json['email'] as String?,
       telegram: json['telegram'] as String?,
       plannedBudget: (json['plannedBudget'] as num?)?.toDouble() ?? legacyBudget,
-      isArchived: json['isArchived'] as bool? ?? false,
       createdAt:
           DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
       updatedAt:
@@ -77,7 +74,6 @@ class Client {
       'email': email,
       'telegram': telegram,
       'plannedBudget': plannedBudget,
-      'isArchived': isArchived,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'color': avatarColorHex,

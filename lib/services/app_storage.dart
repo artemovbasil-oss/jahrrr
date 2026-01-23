@@ -2,7 +2,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AppStorage {
   static const String appLockKey = 'appLockEnabled';
-  static const String themeModeKey = 'themeMode';
+  static const String themeModeKey = 'theme_mode';
+  static const String legacyThemeModeKey = 'themeMode';
 
   static Future<bool> isAppLockEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -14,13 +15,21 @@ class AppStorage {
     await prefs.setBool(appLockKey, value);
   }
 
-  static Future<bool> isDarkModeEnabled() async {
+  static Future<String> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(themeModeKey) ?? false;
+    final stored = prefs.getString(themeModeKey);
+    if (stored != null) {
+      return stored;
+    }
+    final legacyValue = prefs.getBool(legacyThemeModeKey);
+    if (legacyValue == null) {
+      return 'system';
+    }
+    return legacyValue ? 'dark' : 'light';
   }
 
-  static Future<void> setDarkModeEnabled(bool value) async {
+  static Future<void> setThemeMode(String value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(themeModeKey, value);
+    await prefs.setString(themeModeKey, value);
   }
 }

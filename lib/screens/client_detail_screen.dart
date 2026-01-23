@@ -78,7 +78,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final pastPayments =
         computedPayments.where((payment) => !payment.date.isAfter(normalizedNow)).toList();
     final summaryParts = _buildSummaryChips();
-    final visibleProjects = _projects.where((project) => !project.isArchived).toList();
+    final visibleProjects = _projects.toList();
     final isLoading = widget.isLoading;
 
     return Scaffold(
@@ -90,7 +90,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             onSelected: (value) {
               if (value == 'edit') {
                 _editClient();
-              } else if (value == 'archive') {
+              } else if (value == 'delete') {
                 _confirmDeleteClient();
               } else if (value == 'duplicate') {
                 _duplicateClient();
@@ -102,8 +102,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 child: Text('Edit'),
               ),
               PopupMenuItem(
-                value: 'archive',
-                child: Text('Archive'),
+                value: 'delete',
+                child: Text('Delete'),
               ),
               PopupMenuItem(
                 value: 'duplicate',
@@ -175,7 +175,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                               child: _ProjectRow(
                                 project: project,
                                 onEdit: () => _editProject(project),
-                                onArchive: () => _archiveProject(project),
+                                onDelete: () => _deleteProject(project),
                                 onDuplicate: () => _duplicateProject(project),
                                 formatDate: _formatDate,
                                 formatCurrency: _formatCurrency,
@@ -305,8 +305,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Archive client'),
-        content: const Text('This will archive the client and hide its projects and payments.'),
+        title: const Text('Delete client'),
+        content: const Text('This will permanently delete the client and its data.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -314,7 +314,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Archive'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -373,8 +373,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         controller: amountController,
                         decoration: InputDecoration(
                           labelText: _isRetainerClient(_client)
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType:
                             const TextInputType.numberWithOptions(decimal: true),
@@ -549,7 +549,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       telegram:
           telegramController.text.trim().isEmpty ? null : telegramController.text.trim(),
       plannedBudget: _isRetainerClient(_client) ? null : parsedAmount,
-      isArchived: _client.isArchived,
       createdAt: _client.createdAt,
       updatedAt: now,
       avatarColorHex: _client.avatarColorHex,
@@ -707,26 +706,14 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     });
   }
 
-  Future<void> _archiveProject(Project project) async {
+  Future<void> _deleteProject(Project project) async {
     await widget.onDeleteProject(project);
     if (!mounted) {
       return;
     }
     setState(() {
-      final index = _projects.indexOf(project);
-      if (index != -1) {
-        _projects[index] = Project(
-          id: project.id,
-          clientId: project.clientId,
-          title: project.title,
-          amount: project.amount,
-          status: project.status,
-          isArchived: true,
-          deadlineDate: project.deadlineDate,
-          createdAt: project.createdAt,
-          updatedAt: DateTime.now(),
-        );
-      }
+      _projects.removeWhere((item) => item.id == project.id);
+      _payments.removeWhere((payment) => payment.projectId == project.id);
     });
   }
 
@@ -759,7 +746,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     TextField(
                       controller: amountController,
                       decoration: const InputDecoration(
-                        labelText: 'Project amount (\\$)',
+                        labelText: 'Project amount (\$)',
                       ),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
@@ -865,7 +852,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       title: updatedTitle,
       amount: updatedAmount,
       status: selectedStage,
-      isArchived: project.isArchived,
       deadlineDate: selectedDeadline,
       createdAt: project.createdAt,
       updatedAt: DateTime.now(),
@@ -931,7 +917,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     TextField(
                       controller: amountController,
                       decoration: const InputDecoration(
-                        labelText: 'Amount (\\$)',
+                        labelText: 'Amount (\$)',
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     ),
@@ -1167,9 +1153,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     } else {
       for (final payment in _payments) {
         final project = _projectForPayment(payment);
-        if (project != null && project.isArchived) {
-          continue;
-        }
         if (payment.status == 'planned') {
           final dueDate = payment.dueDate ?? payment.createdAt;
           combined.add(
@@ -1479,7 +1462,7 @@ class _ProjectRow extends StatelessWidget {
     required this.project,
     required this.onDuplicate,
     required this.onEdit,
-    required this.onArchive,
+    required this.onDelete,
     required this.formatDate,
     required this.formatCurrency,
     required this.stageLabel,
@@ -1488,7 +1471,7 @@ class _ProjectRow extends StatelessWidget {
   final Project project;
   final VoidCallback onDuplicate;
   final VoidCallback onEdit;
-  final VoidCallback onArchive;
+  final VoidCallback onDelete;
   final String Function(DateTime) formatDate;
   final String Function(double) formatCurrency;
   final String stageLabel;
@@ -1543,8 +1526,8 @@ class _ProjectRow extends StatelessWidget {
           onSelected: (value) {
             if (value == 'edit') {
               onEdit();
-            } else if (value == 'archive') {
-              onArchive();
+            } else if (value == 'delete') {
+              onDelete();
             } else if (value == 'duplicate') {
               onDuplicate();
             }
@@ -1555,8 +1538,8 @@ class _ProjectRow extends StatelessWidget {
               child: Text('Edit'),
             ),
             PopupMenuItem(
-              value: 'archive',
-              child: Text('Archive'),
+              value: 'delete',
+              child: Text('Delete'),
             ),
             PopupMenuItem(
               value: 'duplicate',

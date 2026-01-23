@@ -44,6 +44,16 @@ class _AvatarColorUpdate {
   final bool updated;
 }
 
+class _BootstrapFailure implements Exception {
+  const _BootstrapFailure({
+    required this.source,
+    required this.error,
+  });
+
+  final String source;
+  final Object error;
+}
+
 class _DashboardScreenState extends State<DashboardScreen> {
   static const Map<String, String> _paymentKindLabels = {
     'deposit': 'Deposit',
@@ -87,6 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   bool _isSearching = false;
   String _searchQuery = '';
+  _BootstrapFailure? _bootstrapFailure;
   UserProfile? _profile;
   late final SupabaseRepository _repository;
   final Random _random = Random();
@@ -102,7 +113,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
     _loadProfile();
-    _loadData();
+    _bootstrapData();
   }
 
   @override
@@ -437,6 +448,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         controller: _scrollController,
         padding: const EdgeInsets.all(20),
         children: [
+          if (_bootstrapFailure != null) ...[
+            _buildBootstrapErrorBanner(),
+            const SizedBox(height: 16),
+          ],
           GridView.count(
             crossAxisCount: 2,
             mainAxisSpacing: 16,
@@ -500,9 +515,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             actionLabel: 'Add',
             onActionPressed: () {
               final hasProjects = _projects.any(
-                (project) =>
-                    _clientById(project.clientId)?.isArchived != true &&
-                    !project.isArchived,
+                (project) => _clientById(project.clientId) != null,
               );
               if (!hasProjects) {
                 _showSnackBar(context, 'Create a project first');
@@ -660,24 +673,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (result == ProfileResult.updated || result == ProfileResult.dataImported) {
       await _loadProfile();
       if (result == ProfileResult.dataImported) {
-        await _loadData();
+        await _bootstrapData();
       }
     } else if (result == ProfileResult.loggedOut) {
       widget.onLoggedOut();
     }
   }
 
-  Future<void> _loadData() async {
+  Future<void> _bootstrapData() async {
     if (!mounted) {
       return;
     }
     setState(() {
       _isLoading = true;
+      _bootstrapFailure = null;
     });
+
+    final auth = Supabase.instance.client.auth;
+    final session = auth.currentSession;
+    if (session == null) {
+      _handleBootstrapFailure(
+        const _BootstrapFailure(
+          source: 'auth.session',
+          error: AuthException('No active session available.'),
+        ),
+      );
+      widget.onLoggedOut();
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (auth.currentUser == null) {
+      try {
+        await auth.getUser();
+      } catch (error) {
+        _logBootstrapFailure(
+          _BootstrapFailure(source: 'auth.getUser', error: error),
+        );
+      }
+    }
+
     try {
-      final clients = await _repository.fetchClients();
-      final projects = await _repository.fetchProjects();
-      final payments = await _repository.fetchProjectPayments();
+      final clientRowsFuture =
+          _wrapBootstrapCall('clients.select', _repository.fetchClientRows);
+      final retainerRowsFuture = _wrapBootstrapCall(
+        'retainer_settings.select',
+        _repository.fetchRetainerSettingsRows,
+      );
+      final projectsFuture =
+          _wrapBootstrapCall('projects.select', _repository.fetchProjects);
+      final paymentsFuture = _wrapBootstrapCall(
+        'project_payments.select',
+        _repository.fetchProjectPayments,
+      );
+
+      final clientRows = await clientRowsFuture;
+      final retainerRows = await retainerRowsFuture;
+      final projects = await projectsFuture;
+      final payments = await paymentsFuture;
+      final clients = _repository.buildClientsWithRetainers(
+        clientRows: clientRows,
+        retainerRows: retainerRows,
+      );
       final ensuredClients = _ensureClientAvatarColors(clients);
       if (ensuredClients.updated) {
         await _repository.syncAll(
@@ -700,16 +761,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ..clear()
           ..addAll(payments);
       });
+    } on _BootstrapFailure catch (failure) {
+      _handleBootstrapFailure(failure);
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _clients.clear();
-        _projects.clear();
-        _projectPayments.clear();
-      });
-      _showSnackBar(context, 'Failed to load data.');
+      _handleBootstrapFailure(_BootstrapFailure(source: 'bootstrap', error: error));
     } finally {
       if (!mounted) {
         return;
@@ -720,6 +775,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<T> _wrapBootstrapCall<T>(
+    String source,
+    Future<T> Function() call,
+  ) async {
+    try {
+      return await call();
+    } catch (error) {
+      throw _BootstrapFailure(source: source, error: error);
+    }
+  }
+
+  void _handleBootstrapFailure(_BootstrapFailure failure) {
+    _logBootstrapFailure(failure);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _bootstrapFailure = failure;
+      _clients.clear();
+      _projects.clear();
+      _projectPayments.clear();
+    });
+  }
+
+  void _logBootstrapFailure(_BootstrapFailure failure) {
+    final auth = Supabase.instance.client.auth;
+    final session = auth.currentSession;
+    final userId = auth.currentUser?.id ?? session?.user.id;
+    final error = failure.error;
+    if (error is PostgrestException) {
+      debugPrint(
+        'Bootstrap failed source=${failure.source} message=${error.message} '
+        'code=${error.code} details=${error.details} hint=${error.hint} '
+        'user_id=$userId session=${session != null}',
+      );
+    } else {
+      debugPrint(
+        'Bootstrap failed source=${failure.source} error=$error '
+        'user_id=$userId session=${session != null}',
+      );
+    }
+  }
+
+  String _bootstrapFailureMessage(_BootstrapFailure failure) {
+    final error = failure.error;
+    if (error is PostgrestException) {
+      final detailParts = [
+        'message=${error.message}',
+        if (error.code != null) 'code=${error.code}',
+        if (error.details != null) 'details=${error.details}',
+        if (error.hint != null) 'hint=${error.hint}',
+      ].join(', ');
+      return 'Supabase ${failure.source} failed: $detailParts';
+    }
+    if (error is AuthException) {
+      return 'Auth error during ${failure.source}: ${error.message}';
+    }
+    return 'Bootstrap failed during ${failure.source}: $error';
+  }
+
+  Widget _buildBootstrapErrorBanner() {
+    final failure = _bootstrapFailure;
+    if (failure == null) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Data load failed',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _bootstrapFailureMessage(failure),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _bootstrapData,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<bool> _persistData() async {
     try {
       await _repository.syncAll(
@@ -727,7 +883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         projects: _projects,
         payments: _projectPayments,
       );
-      await _loadData();
+      await _bootstrapData();
       return true;
     } catch (_) {
       _showSnackBar(context, 'Failed to save changes.');
@@ -1064,8 +1220,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _selectedContractType == 'retainer'
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1277,8 +1433,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _isRetainerClient(client)
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1461,7 +1617,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       email: contactEmail.isEmpty ? null : contactEmail,
       telegram: contactTelegram.isEmpty ? null : contactTelegram,
       plannedBudget: _isRetainerClient(client) ? null : plannedBudget,
-      isArchived: client.isArchived,
       createdAt: client.createdAt,
       updatedAt: now,
       avatarColorHex: client.avatarColorHex,
@@ -1571,7 +1726,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       email: client.email,
       telegram: client.telegram,
       plannedBudget: client.plannedBudget,
-      isArchived: false,
       createdAt: now,
       updatedAt: now,
       avatarColorHex: generateClientColorHex(_random),
@@ -1581,9 +1735,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _clients.add(duplicatedClient);
       if (!_isRetainerClient(client) && copyWithAllSettings) {
-        final projectsToCopy = _projects
-            .where((project) => project.clientId == client.id && !project.isArchived)
-            .toList();
+        final projectsToCopy =
+            _projects.where((project) => project.clientId == client.id).toList();
         final projectIdMap = <String, String>{};
         for (final project in projectsToCopy) {
           final newProjectId = _generateId();
@@ -1595,7 +1748,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: project.title,
               amount: project.amount,
               status: project.status,
-              isArchived: false,
               deadlineDate: project.deadlineDate,
               createdAt: now,
               updatedAt: now,
@@ -1658,7 +1810,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           email: contactEmail.isEmpty ? null : contactEmail,
           telegram: contactTelegram.isEmpty ? null : contactTelegram,
           plannedBudget: contractType == 'project' ? plannedBudget : null,
-          isArchived: false,
           createdAt: now,
           updatedAt: now,
           avatarColorHex: generateClientColorHex(_random),
@@ -1679,7 +1830,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<Client> _projectEligibleClients() {
     return _clients
-        .where((client) => !client.isArchived && !_isRetainerClient(client))
+        .where((client) => !_isRetainerClient(client))
         .toList();
   }
 
@@ -1774,7 +1925,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _projectAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Project amount (\\$)',
+                          labelText: 'Project amount (\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1883,9 +2034,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context, setDialogState) {
             final projectOptions = _projects
                 .where(
-                  (project) =>
-                      _clientById(project.clientId)?.isArchived != true &&
-                      !project.isArchived,
+                  (project) => _clientById(project.clientId) != null,
                 )
                 .toList();
             return AlertDialog(
@@ -1927,7 +2076,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _paymentAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Payment amount (\\$)',
+                          labelText: 'Payment amount (\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -2155,7 +2304,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: title,
       amount: amount,
       status: stage,
-      isArchived: false,
       deadlineDate: deadline,
       createdAt: now,
       updatedAt: now,
@@ -2195,22 +2343,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _archiveProject(Project project) async {
+  Future<void> _deleteProject(Project project) async {
     setState(() {
-      final index = _projects.indexWhere((item) => item.id == project.id);
-      if (index != -1) {
-        _projects[index] = Project(
-          id: project.id,
-          clientId: project.clientId,
-          title: project.title,
-          amount: project.amount,
-          status: project.status,
-          isArchived: true,
-          deadlineDate: project.deadlineDate,
-          createdAt: project.createdAt,
-          updatedAt: DateTime.now(),
-        );
-      }
+      _projects.removeWhere((item) => item.id == project.id);
+      _projectPayments.removeWhere((payment) => payment.projectId == project.id);
     });
     await _persistData();
   }
@@ -2257,7 +2393,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: newTitle,
       amount: project.amount,
       status: project.status,
-      isArchived: false,
       deadlineDate: project.deadlineDate,
       createdAt: now,
       updatedAt: now,
@@ -2291,26 +2426,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return duplicated;
   }
 
-  Future<void> _archiveClient(Client client) async {
+  Future<void> _deleteClient(Client client) async {
     setState(() {
-      final index = _clients.indexWhere((item) => item.id == client.id);
-      if (index != -1) {
-        _clients[index] = Client(
-          id: client.id,
-          name: client.name,
-          type: client.type,
-          contactPerson: client.contactPerson,
-          phone: client.phone,
-          email: client.email,
-          telegram: client.telegram,
-          plannedBudget: client.plannedBudget,
-          isArchived: true,
-          createdAt: client.createdAt,
-          updatedAt: DateTime.now(),
-          avatarColorHex: client.avatarColorHex,
-          retainerSettings: client.retainerSettings,
-        );
-      }
+      _clients.removeWhere((item) => item.id == client.id);
+      final projectIds = _projects
+          .where((project) => project.clientId == client.id)
+          .map((project) => project.id)
+          .toSet();
+      _projects.removeWhere((project) => project.clientId == client.id);
+      _projectPayments
+          .removeWhere((payment) => projectIds.contains(payment.projectId));
     });
     await _persistData();
   }
@@ -2334,7 +2459,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           payments: clientPayments,
           openRetainerSettings: openRetainerSettings,
           isLoading: _isLoading,
-          onDeleteClient: () => _archiveClient(client),
+          onDeleteClient: () => _deleteClient(client),
           onUpdateClient: _updateClient,
           onDuplicateClient: (source, newName, copyWithAllSettings) =>
               _duplicateClientWithName(source, newName, copyWithAllSettings),
@@ -2342,7 +2467,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onDeletePayment: _deleteProjectPayment,
           onDuplicateProject: _duplicateProject,
           onUpdateProject: _updateProject,
-          onDeleteProject: _archiveProject,
+          onDeleteProject: _deleteProject,
         ),
       ),
     );
@@ -2431,7 +2556,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         email: client.email,
         telegram: client.telegram,
         plannedBudget: client.plannedBudget,
-        isArchived: client.isArchived,
         createdAt: client.createdAt,
         updatedAt: client.updatedAt,
         avatarColorHex: generateClientColorHex(_random),
@@ -2450,7 +2574,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return client.retainerSettings?.amount ?? 0;
     }
     final projectIds = _projects
-        .where((project) => project.clientId == client.id && !project.isArchived)
+        .where((project) => project.clientId == client.id)
         .map((project) => project.id)
         .toSet();
     final plannedSum = _projectPayments
@@ -2460,7 +2584,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return plannedSum;
     }
     final projectAmountSum = _projects
-        .where((project) => project.clientId == client.id && !project.isArchived)
+        .where((project) => project.clientId == client.id)
         .fold<double>(0, (sum, project) => sum + project.amount);
     return projectAmountSum == 0 ? (client.plannedBudget ?? 0) : projectAmountSum;
   }
@@ -2473,7 +2597,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             (item) => item?.name == entry.client,
             orElse: () => null,
           );
-      if (client == null || client.isArchived) {
+      if (client == null) {
         continue;
       }
       upcoming.add(
@@ -2496,7 +2620,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         continue;
       }
       final project = _projectById(payment.projectId);
-      if (project == null || project.isArchived) {
+      if (project == null) {
         continue;
       }
       if (project.status != 'deposit_received' &&
@@ -2504,7 +2628,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         continue;
       }
       final client = _clientById(project.clientId);
-      if (client == null || client.isArchived) {
+      if (client == null) {
         continue;
       }
       upcoming.add(
@@ -2570,7 +2694,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Client> _visibleClients() {
-    return _clients.where((client) => !client.isArchived).toList();
+    return _clients.toList();
   }
 
   Client? _clientById(String id) {
@@ -2592,13 +2716,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   bool _isActiveProject(Project project) {
-    return !project.isArchived && project.status != 'payment_received_in_full';
+    return project.status != 'payment_received_in_full';
   }
 
   List<Project> _activeProjects() {
     return _projects.where((project) {
       final client = _clientById(project.clientId);
-      return client != null && !client.isArchived && _isActiveProject(project);
+      return client != null && _isActiveProject(project);
     }).toList();
   }
 
@@ -2653,15 +2777,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (project == null) {
         return false;
       }
-      if (project.isArchived) {
-        return false;
-      }
       if (project.status != 'deposit_received' &&
           project.status != 'payment_received_in_full') {
         return false;
       }
       final client = _clientById(project.clientId);
-      return client != null && !client.isArchived;
+      return client != null;
     }).fold<double>(0, (sum, payment) => sum + payment.amount);
   }
 
@@ -2737,7 +2858,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       title: 'Debug project ${now.toIso8601String()}',
       amount: 1,
       status: 'first_meeting',
-      isArchived: false,
       deadlineDate: null,
       createdAt: now,
       updatedAt: now,
@@ -2877,15 +2997,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (project == null) {
         return false;
       }
-      if (project.isArchived) {
-        return false;
-      }
       if (project.status != 'deposit_received' &&
           project.status != 'payment_received_in_full') {
         return false;
       }
       final client = _clientById(project.clientId);
-      return client != null && !client.isArchived;
+      return client != null;
     }).toList();
 
     _showListSheet(
