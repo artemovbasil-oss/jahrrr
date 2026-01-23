@@ -373,8 +373,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         controller: amountController,
                         decoration: InputDecoration(
                           labelText: _isRetainerClient(_client)
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType:
                             const TextInputType.numberWithOptions(decimal: true),
@@ -746,7 +746,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     TextField(
                       controller: amountController,
                       decoration: const InputDecoration(
-                        labelText: 'Project amount (\\$)',
+                        labelText: 'Project amount (\$)',
                       ),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
@@ -917,7 +917,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     TextField(
                       controller: amountController,
                       decoration: const InputDecoration(
-                        labelText: 'Amount (\\$)',
+                        labelText: 'Amount (\$)',
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     ),

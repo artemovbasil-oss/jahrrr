@@ -99,20 +99,23 @@ class AppThemeController extends ChangeNotifier {
 
   ThemeMode _mode;
 
-  ThemeMode get mode => _mode;
-
-  bool get isDarkMode => _mode == ThemeMode.dark;
+  ThemeMode get themeMode => _mode;
 
   Future<void> load() async {
-    final isDark = await AppStorage.isDarkModeEnabled();
-    _mode = isDark ? ThemeMode.dark : ThemeMode.light;
+    final storedMode = await AppStorage.getThemeMode();
+    _mode = switch (storedMode) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
     notifyListeners();
   }
 
-  Future<void> setDarkMode(bool value) async {
-    _mode = value ? ThemeMode.dark : ThemeMode.light;
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _mode = mode;
+    debugPrint('Theme mode updated: $_mode');
     notifyListeners();
-    await AppStorage.setDarkModeEnabled(value);
+    await AppStorage.setThemeMode(_mode.name);
   }
 }
 
@@ -132,28 +135,13 @@ class AppThemeScope extends InheritedNotifier<AppThemeController> {
   }
 }
 
-class JahrrrApp extends StatefulWidget {
-  const JahrrrApp({super.key});
+class JahrrrApp extends StatelessWidget {
+  const JahrrrApp({
+    super.key,
+    required AppThemeController themeController,
+  }) : _themeController = themeController;
 
-  @override
-  State<JahrrrApp> createState() => _JahrrrAppState();
-}
-
-class _JahrrrAppState extends State<JahrrrApp> {
-  late final AppThemeController _themeController;
-
-  @override
-  void initState() {
-    super.initState();
-    _themeController = AppThemeController(ThemeMode.light);
-    _themeController.load();
-  }
-
-  @override
-  void dispose() {
-    _themeController.dispose();
-    super.dispose();
-  }
+  final AppThemeController _themeController;
 
   @override
   Widget build(BuildContext context) {
@@ -167,7 +155,7 @@ class _JahrrrAppState extends State<JahrrrApp> {
             title: 'Jahrrr CRM',
             theme: buildJahrrrTheme(),
             darkTheme: buildJahrrrDarkTheme(),
-            themeMode: _themeController.mode,
+            themeMode: _themeController.themeMode,
             home: const AuthGate(),
           );
         },

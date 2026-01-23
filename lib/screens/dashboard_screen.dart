@@ -44,6 +44,16 @@ class _AvatarColorUpdate {
   final bool updated;
 }
 
+class _BootstrapFailure implements Exception {
+  const _BootstrapFailure({
+    required this.source,
+    required this.error,
+  });
+
+  final String source;
+  final Object error;
+}
+
 class _DashboardScreenState extends State<DashboardScreen> {
   static const Map<String, String> _paymentKindLabels = {
     'deposit': 'Deposit',
@@ -87,6 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   bool _isSearching = false;
   String _searchQuery = '';
+  _BootstrapFailure? _bootstrapFailure;
   UserProfile? _profile;
   late final SupabaseRepository _repository;
   final Random _random = Random();
@@ -102,7 +113,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
     _loadProfile();
-    _loadData();
+    _bootstrapData();
   }
 
   @override
@@ -437,6 +448,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         controller: _scrollController,
         padding: const EdgeInsets.all(20),
         children: [
+          if (_bootstrapFailure != null) ...[
+            _buildBootstrapErrorBanner(),
+            const SizedBox(height: 16),
+          ],
           GridView.count(
             crossAxisCount: 2,
             mainAxisSpacing: 16,
@@ -658,24 +673,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (result == ProfileResult.updated || result == ProfileResult.dataImported) {
       await _loadProfile();
       if (result == ProfileResult.dataImported) {
-        await _loadData();
+        await _bootstrapData();
       }
     } else if (result == ProfileResult.loggedOut) {
       widget.onLoggedOut();
     }
   }
 
-  Future<void> _loadData() async {
+  Future<void> _bootstrapData() async {
     if (!mounted) {
       return;
     }
     setState(() {
       _isLoading = true;
+      _bootstrapFailure = null;
     });
+
+    final auth = Supabase.instance.client.auth;
+    final session = auth.currentSession;
+    if (session == null) {
+      _handleBootstrapFailure(
+        const _BootstrapFailure(
+          source: 'auth.session',
+          error: AuthException('No active session available.'),
+        ),
+      );
+      widget.onLoggedOut();
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (auth.currentUser == null) {
+      try {
+        await auth.getUser();
+      } catch (error) {
+        _logBootstrapFailure(
+          _BootstrapFailure(source: 'auth.getUser', error: error),
+        );
+      }
+    }
+
     try {
-      final clients = await _repository.fetchClients();
-      final projects = await _repository.fetchProjects();
-      final payments = await _repository.fetchProjectPayments();
+      final clientRowsFuture =
+          _wrapBootstrapCall('clients.select', _repository.fetchClientRows);
+      final retainerRowsFuture = _wrapBootstrapCall(
+        'retainer_settings.select',
+        _repository.fetchRetainerSettingsRows,
+      );
+      final projectsFuture =
+          _wrapBootstrapCall('projects.select', _repository.fetchProjects);
+      final paymentsFuture = _wrapBootstrapCall(
+        'project_payments.select',
+        _repository.fetchProjectPayments,
+      );
+
+      final clientRows = await clientRowsFuture;
+      final retainerRows = await retainerRowsFuture;
+      final projects = await projectsFuture;
+      final payments = await paymentsFuture;
+      final clients = _repository.buildClientsWithRetainers(
+        clientRows: clientRows,
+        retainerRows: retainerRows,
+      );
       final ensuredClients = _ensureClientAvatarColors(clients);
       if (ensuredClients.updated) {
         await _repository.syncAll(
@@ -698,16 +761,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ..clear()
           ..addAll(payments);
       });
+    } on _BootstrapFailure catch (failure) {
+      _handleBootstrapFailure(failure);
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _clients.clear();
-        _projects.clear();
-        _projectPayments.clear();
-      });
-      _showSnackBar(context, 'Failed to load data.');
+      _handleBootstrapFailure(_BootstrapFailure(source: 'bootstrap', error: error));
     } finally {
       if (!mounted) {
         return;
@@ -718,6 +775,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<T> _wrapBootstrapCall<T>(
+    String source,
+    Future<T> Function() call,
+  ) async {
+    try {
+      return await call();
+    } catch (error) {
+      throw _BootstrapFailure(source: source, error: error);
+    }
+  }
+
+  void _handleBootstrapFailure(_BootstrapFailure failure) {
+    _logBootstrapFailure(failure);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _bootstrapFailure = failure;
+      _clients.clear();
+      _projects.clear();
+      _projectPayments.clear();
+    });
+  }
+
+  void _logBootstrapFailure(_BootstrapFailure failure) {
+    final auth = Supabase.instance.client.auth;
+    final session = auth.currentSession;
+    final userId = auth.currentUser?.id ?? session?.user.id;
+    final error = failure.error;
+    if (error is PostgrestException) {
+      debugPrint(
+        'Bootstrap failed source=${failure.source} message=${error.message} '
+        'code=${error.code} details=${error.details} hint=${error.hint} '
+        'user_id=$userId session=${session != null}',
+      );
+    } else {
+      debugPrint(
+        'Bootstrap failed source=${failure.source} error=$error '
+        'user_id=$userId session=${session != null}',
+      );
+    }
+  }
+
+  String _bootstrapFailureMessage(_BootstrapFailure failure) {
+    final error = failure.error;
+    if (error is PostgrestException) {
+      final detailParts = [
+        'message=${error.message}',
+        if (error.code != null) 'code=${error.code}',
+        if (error.details != null) 'details=${error.details}',
+        if (error.hint != null) 'hint=${error.hint}',
+      ].join(', ');
+      return 'Supabase ${failure.source} failed: $detailParts';
+    }
+    if (error is AuthException) {
+      return 'Auth error during ${failure.source}: ${error.message}';
+    }
+    return 'Bootstrap failed during ${failure.source}: $error';
+  }
+
+  Widget _buildBootstrapErrorBanner() {
+    final failure = _bootstrapFailure;
+    if (failure == null) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Data load failed',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _bootstrapFailureMessage(failure),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _bootstrapData,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<bool> _persistData() async {
     try {
       await _repository.syncAll(
@@ -725,7 +883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         projects: _projects,
         payments: _projectPayments,
       );
-      await _loadData();
+      await _bootstrapData();
       return true;
     } catch (_) {
       _showSnackBar(context, 'Failed to save changes.');
@@ -1062,8 +1220,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _selectedContractType == 'retainer'
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1275,8 +1433,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         controller: _plannedBudgetController,
                         decoration: InputDecoration(
                           labelText: _isRetainerClient(client)
-                              ? 'Retainer amount (\\$)'
-                              : 'Planned budget (\\$) (optional)',
+                              ? 'Retainer amount (\$)'
+                              : 'Planned budget (\$) (optional)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1764,7 +1922,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _projectAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Project amount (\\$)',
+                          labelText: 'Project amount (\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {
@@ -1912,7 +2070,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       TextFormField(
                         controller: _paymentAmountController,
                         decoration: const InputDecoration(
-                          labelText: 'Payment amount (\\$)',
+                          labelText: 'Payment amount (\$)',
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (value) {

@@ -55,61 +55,104 @@ class SupabaseRepository {
       userId: userId,
       payload: payload,
     );
+    final row = await _runSupabase(
+      table: 'projects',
+      operation: 'insert',
+      payload: payload,
+      action: () async {
+        return _client.from('projects').insert(payload).select().single();
+      },
+    );
+    return _projectFromRow(row as Map<String, dynamic>);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchClientRows() async {
+    final userId = _requireUserId();
     try {
-      final row = await _client
-          .from('projects')
-          .insert(payload)
-          .select()
-          .single();
-      return _projectFromRow(row as Map<String, dynamic>);
+      final clientRows = await _runSupabase(
+        table: 'clients',
+        operation: 'select',
+        payload: {'user_id': userId},
+        action: () async {
+          return _client
+              .from('clients')
+              .select()
+              .eq('user_id', userId)
+              .order('created_at');
+        },
+      );
+      return clientRows
+          .map<Map<String, dynamic>>((row) => row as Map<String, dynamic>)
+          .toList();
     } on PostgrestException catch (error) {
-      _logPostgrestError(
-        operation: 'projects.insert',
-        error: error,
-        payload: payload,
-      );
-      rethrow;
-    } catch (error) {
-      _logUnknownError(
-        operation: 'projects.insert',
-        error: error,
-        payload: payload,
-      );
+      if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
+        _supportsAvatarColorColumn = false;
+        final fallbackRows = await _runSupabase(
+          table: 'clients',
+          operation: 'select',
+          payload: {'user_id': userId, 'fallback': true},
+          action: () async {
+            return _client
+                .from('clients')
+                .select(_clientFallbackColumns())
+                .eq('user_id', userId)
+                .order('created_at');
+          },
+        );
+        return fallbackRows
+            .map<Map<String, dynamic>>((row) => row as Map<String, dynamic>)
+            .toList();
+      }
       rethrow;
     }
   }
 
-  Future<List<Client>> fetchClients() async {
+  Future<List<Map<String, dynamic>>> fetchRetainerSettingsRows() async {
     final userId = _requireUserId();
-    final clientRows = await _client
-        .from('clients')
-        .select()
-        .eq('user_id', userId)
-        .order('created_at');
-    final retainerRows = await _client
-        .from('retainer_settings')
-        .select()
-        .eq('user_id', userId);
+    final retainerRows = await _runSupabase(
+      table: 'retainer_settings',
+      operation: 'select',
+      payload: {'user_id': userId},
+      action: () async {
+        return _client
+            .from('retainer_settings')
+            .select()
+            .eq('user_id', userId);
+      },
+    );
+    return retainerRows
+        .map<Map<String, dynamic>>((row) => row as Map<String, dynamic>)
+        .toList();
+  }
+
+  List<Client> buildClientsWithRetainers({
+    required List<Map<String, dynamic>> clientRows,
+    required List<Map<String, dynamic>> retainerRows,
+  }) {
     final retainers = <String, Map<String, dynamic>>{
-      for (final row in retainerRows)
-        (row as Map<String, dynamic>)['client_id'] as String: row,
+      for (final row in retainerRows) row['client_id'] as String: row,
     };
-    return clientRows.map<Client>((row) {
-      final clientRow = row as Map<String, dynamic>;
-      return _clientFromRow(
-        clientRow,
-        retainers[clientRow['id'] as String],
-      );
-    }).toList();
+    return clientRows
+        .map<Client>(
+          (row) => _clientFromRow(row, retainers[row['id'] as String]),
+        )
+        .toList();
   }
 
   Future<List<Project>> fetchProjects() async {
     final userId = _requireUserId();
-    final rows = await _client
-        .from('projects')
-        .select()
-        .eq('user_id', userId)
-        .order('created_at');
+    final rows = await _runSupabase(
+      table: 'projects',
+      operation: 'select',
+      payload: {'user_id': userId},
+      action: () async {
+        return _client
+            .from('projects')
+            .select()
+            .eq('user_id', userId)
+            .order('created_at');
+      },
+    );
     return rows
         .map<Project>((row) => _projectFromRow(row as Map<String, dynamic>))
         .toList();
@@ -117,11 +160,18 @@ class SupabaseRepository {
 
   Future<List<ProjectPayment>> fetchProjectPayments() async {
     final userId = _requireUserId();
-    final rows = await _client
-        .from('project_payments')
-        .select()
-        .eq('user_id', userId)
-        .order('created_at');
+    final rows = await _runSupabase(
+      table: 'project_payments',
+      operation: 'select',
+      payload: {'user_id': userId},
+      action: () async {
+        return _client
+            .from('project_payments')
+            .select()
+            .eq('user_id', userId)
+            .order('created_at');
+      },
+    );
     return rows
         .map<ProjectPayment>(
           (row) => _projectPaymentFromRow(row as Map<String, dynamic>),
@@ -145,14 +195,38 @@ class SupabaseRepository {
     if (user == null) {
       throw const AuthException('No user session available.');
     }
-    final clients =
-        await _client.from('clients').select().eq('user_id', user.id);
-    final retainers =
-        await _client.from('retainer_settings').select().eq('user_id', user.id);
-    final projects =
-        await _client.from('projects').select().eq('user_id', user.id);
-    final payments =
-        await _client.from('project_payments').select().eq('user_id', user.id);
+    final clients = await _runSupabase(
+      table: 'clients',
+      operation: 'select',
+      payload: {'user_id': user.id},
+      action: () async {
+        return _client.from('clients').select().eq('user_id', user.id);
+      },
+    );
+    final retainers = await _runSupabase(
+      table: 'retainer_settings',
+      operation: 'select',
+      payload: {'user_id': user.id},
+      action: () async {
+        return _client.from('retainer_settings').select().eq('user_id', user.id);
+      },
+    );
+    final projects = await _runSupabase(
+      table: 'projects',
+      operation: 'select',
+      payload: {'user_id': user.id},
+      action: () async {
+        return _client.from('projects').select().eq('user_id', user.id);
+      },
+    );
+    final payments = await _runSupabase(
+      table: 'project_payments',
+      operation: 'select',
+      payload: {'user_id': user.id},
+      action: () async {
+        return _client.from('project_payments').select().eq('user_id', user.id);
+      },
+    );
 
     return {
       'schemaVersion': 1,
@@ -182,50 +256,174 @@ class SupabaseRepository {
     final payments = _sanitizeImportList(data['project_payments'], userId);
 
     if (mode == ImportMode.replace) {
-      await _client.from('project_payments').delete().eq('user_id', userId);
-      await _client.from('projects').delete().eq('user_id', userId);
-      await _client.from('retainer_settings').delete().eq('user_id', userId);
-      await _client.from('clients').delete().eq('user_id', userId);
+      await _runSupabase(
+        table: 'project_payments',
+        operation: 'delete',
+        payload: {'user_id': userId},
+        action: () async {
+          return _client.from('project_payments').delete().eq('user_id', userId);
+        },
+      );
+      await _runSupabase(
+        table: 'projects',
+        operation: 'delete',
+        payload: {'user_id': userId},
+        action: () async {
+          return _client.from('projects').delete().eq('user_id', userId);
+        },
+      );
+      await _runSupabase(
+        table: 'retainer_settings',
+        operation: 'delete',
+        payload: {'user_id': userId},
+        action: () async {
+          return _client.from('retainer_settings').delete().eq('user_id', userId);
+        },
+      );
+      await _runSupabase(
+        table: 'clients',
+        operation: 'delete',
+        payload: {'user_id': userId},
+        action: () async {
+          return _client.from('clients').delete().eq('user_id', userId);
+        },
+      );
     }
 
-    if (clients.isNotEmpty) {
-      await _client.from('clients').upsert(clients);
+    final clientPayload = _supportsAvatarColorColumn
+        ? clients
+        : _stripAvatarColorFromRows(clients);
+    if (clientPayload.isNotEmpty) {
+      try {
+        await _runSupabase(
+          table: 'clients',
+          operation: 'upsert',
+          payload: {'rows': clientPayload.length},
+          action: () async {
+            return _client.from('clients').upsert(clientPayload);
+          },
+        );
+      } on PostgrestException catch (error) {
+        if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
+          _supportsAvatarColorColumn = false;
+          final fallbackClients = _stripAvatarColorFromRows(clients);
+          if (fallbackClients.isNotEmpty) {
+            await _runSupabase(
+              table: 'clients',
+              operation: 'upsert',
+              payload: {'rows': fallbackClients.length, 'fallback': true},
+              action: () async {
+                return _client.from('clients').upsert(fallbackClients);
+              },
+            );
+          }
+        } else {
+          rethrow;
+        }
+      }
     }
     if (retainers.isNotEmpty) {
-      await _client.from('retainer_settings').upsert(retainers);
+      await _runSupabase(
+        table: 'retainer_settings',
+        operation: 'upsert',
+        payload: {'rows': retainers.length},
+        action: () async {
+          return _client.from('retainer_settings').upsert(retainers);
+        },
+      );
     }
     if (projects.isNotEmpty) {
-      await _client.from('projects').upsert(projects);
+      await _runSupabase(
+        table: 'projects',
+        operation: 'upsert',
+        payload: {'rows': projects.length},
+        action: () async {
+          return _client.from('projects').upsert(projects);
+        },
+      );
     }
     if (payments.isNotEmpty) {
-      await _client.from('project_payments').upsert(payments);
+      await _runSupabase(
+        table: 'project_payments',
+        operation: 'upsert',
+        payload: {'rows': payments.length},
+        action: () async {
+          return _client.from('project_payments').upsert(payments);
+        },
+      );
     }
   }
 
   Future<void> _syncClients(String userId, List<Client> clients) async {
-    final existing = await _client
-        .from('clients')
-        .select('id')
-        .eq('user_id', userId);
+    final existing = await _runSupabase(
+      table: 'clients',
+      operation: 'select',
+      payload: {'user_id': userId, 'columns': ['id']},
+      action: () async {
+        return _client.from('clients').select('id').eq('user_id', userId);
+      },
+    );
     final existingIds = existing
         .map<String>((row) => row['id'] as String)
         .toSet();
     final currentIds = clients.map((client) => client.id).toSet();
     final toDelete = existingIds.difference(currentIds).toList();
     if (toDelete.isNotEmpty) {
-      await _client.from('clients').delete().inFilter('id', toDelete);
+      await _runSupabase(
+        table: 'clients',
+        operation: 'delete',
+        payload: {'id_count': toDelete.length},
+        action: () async {
+          return _client.from('clients').delete().inFilter('id', toDelete);
+        },
+      );
     }
     final payload = clients
         .map((client) => _clientToRow(client, userId))
         .toList();
     if (payload.isNotEmpty) {
-      await _client.from('clients').upsert(payload);
+      try {
+        await _runSupabase(
+          table: 'clients',
+          operation: 'upsert',
+          payload: {'rows': payload.length},
+          action: () async {
+            return _client.from('clients').upsert(payload);
+          },
+        );
+      } on PostgrestException catch (error) {
+        if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
+          _supportsAvatarColorColumn = false;
+          final fallbackPayload = clients
+              .map((client) => _clientToRow(client, userId))
+              .toList();
+          if (fallbackPayload.isNotEmpty) {
+            await _runSupabase(
+              table: 'clients',
+              operation: 'upsert',
+              payload: {'rows': fallbackPayload.length, 'fallback': true},
+              action: () async {
+                return _client.from('clients').upsert(fallbackPayload);
+              },
+            );
+          }
+        } else {
+          rethrow;
+        }
+      }
     }
 
-    final retainerExisting = await _client
-        .from('retainer_settings')
-        .select('client_id')
-        .eq('user_id', userId);
+    final retainerExisting = await _runSupabase(
+      table: 'retainer_settings',
+      operation: 'select',
+      payload: {'user_id': userId, 'columns': ['client_id']},
+      action: () async {
+        return _client
+            .from('retainer_settings')
+            .select('client_id')
+            .eq('user_id', userId);
+      },
+    );
     final retainerExistingIds = retainerExisting
         .map<String>((row) => row['client_id'] as String)
         .toSet();
@@ -237,28 +435,53 @@ class SupabaseRepository {
         retainerPayload.map((row) => row['client_id'] as String).toSet();
     final retainerDelete = retainerExistingIds.difference(retainerIds).toList();
     if (retainerDelete.isNotEmpty) {
-      await _client.from('retainer_settings').delete().inFilter(
-            'client_id',
-            retainerDelete,
-          );
+      await _runSupabase(
+        table: 'retainer_settings',
+        operation: 'delete',
+        payload: {'client_id_count': retainerDelete.length},
+        action: () async {
+          return _client.from('retainer_settings').delete().inFilter(
+                'client_id',
+                retainerDelete,
+              );
+        },
+      );
     }
     if (retainerPayload.isNotEmpty) {
-      await _client.from('retainer_settings').upsert(retainerPayload);
+      await _runSupabase(
+        table: 'retainer_settings',
+        operation: 'upsert',
+        payload: {'rows': retainerPayload.length},
+        action: () async {
+          return _client.from('retainer_settings').upsert(retainerPayload);
+        },
+      );
     }
   }
 
   Future<void> _syncProjects(String userId, List<Project> projects) async {
-    final existing = await _client
-        .from('projects')
-        .select('id')
-        .eq('user_id', userId);
+    final existing = await _runSupabase(
+      table: 'projects',
+      operation: 'select',
+      payload: {'user_id': userId, 'columns': ['id']},
+      action: () async {
+        return _client.from('projects').select('id').eq('user_id', userId);
+      },
+    );
     final existingIds = existing
         .map<String>((row) => row['id'] as String)
         .toSet();
     final currentIds = projects.map((project) => project.id).toSet();
     final toDelete = existingIds.difference(currentIds).toList();
     if (toDelete.isNotEmpty) {
-      await _client.from('projects').delete().inFilter('id', toDelete);
+      await _runSupabase(
+        table: 'projects',
+        operation: 'delete',
+        payload: {'id_count': toDelete.length},
+        action: () async {
+          return _client.from('projects').delete().inFilter('id', toDelete);
+        },
+      );
     }
     final payload = projects
         .map(
@@ -271,7 +494,14 @@ class SupabaseRepository {
         )
         .toList();
     if (payload.isNotEmpty) {
-      await _client.from('projects').upsert(payload);
+      await _runSupabase(
+        table: 'projects',
+        operation: 'upsert',
+        payload: {'rows': payload.length},
+        action: () async {
+          return _client.from('projects').upsert(payload);
+        },
+      );
     }
   }
 
@@ -279,23 +509,47 @@ class SupabaseRepository {
     String userId,
     List<ProjectPayment> payments,
   ) async {
-    final existing = await _client
-        .from('project_payments')
-        .select('id')
-        .eq('user_id', userId);
+    final existing = await _runSupabase(
+      table: 'project_payments',
+      operation: 'select',
+      payload: {'user_id': userId, 'columns': ['id']},
+      action: () async {
+        return _client
+            .from('project_payments')
+            .select('id')
+            .eq('user_id', userId);
+      },
+    );
     final existingIds = existing
         .map<String>((row) => row['id'] as String)
         .toSet();
     final currentIds = payments.map((payment) => payment.id).toSet();
     final toDelete = existingIds.difference(currentIds).toList();
     if (toDelete.isNotEmpty) {
-      await _client.from('project_payments').delete().inFilter('id', toDelete);
+      await _runSupabase(
+        table: 'project_payments',
+        operation: 'delete',
+        payload: {'id_count': toDelete.length},
+        action: () async {
+          return _client
+              .from('project_payments')
+              .delete()
+              .inFilter('id', toDelete);
+        },
+      );
     }
     final payload = payments
         .map((payment) => _paymentToRow(payment, userId))
         .toList();
     if (payload.isNotEmpty) {
-      await _client.from('project_payments').upsert(payload);
+      await _runSupabase(
+        table: 'project_payments',
+        operation: 'upsert',
+        payload: {'rows': payload.length},
+        action: () async {
+          return _client.from('project_payments').upsert(payload);
+        },
+      );
     }
   }
 
@@ -332,7 +586,7 @@ class SupabaseRepository {
   }
 
   Map<String, dynamic> _clientToRow(Client client, String userId) {
-    return {
+    final payload = {
       'id': client.id,
       'user_id': userId,
       'name': client.name,
@@ -346,6 +600,10 @@ class SupabaseRepository {
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
+    if (_supportsAvatarColorColumn) {
+      payload['avatar_color'] = client.avatarColorHex;
+    }
+    return payload;
   }
 
   Map<String, dynamic> _retainerToRow(Client client, String userId) {
@@ -500,7 +758,8 @@ class SupabaseRepository {
   }
 
   String _requireUserId() {
-    final userId = currentUser?.id;
+    final userId =
+        currentUser?.id ?? _client.auth.currentSession?.user.id;
     if (userId == null) {
       throw const AuthException('No user session available.');
     }
@@ -513,25 +772,79 @@ class SupabaseRepository {
     return '${date.year}-$month-$day';
   }
 
+  String _clientFallbackColumns() {
+    return 'id,user_id,name,type,contact_person,phone,email,telegram,planned_budget,'
+        'created_at,updated_at';
+  }
+
+  bool _isAvatarColorMissing(PostgrestException error) {
+    return error.code == 'PGRST204' &&
+        error.message.toLowerCase().contains('avatar_color');
+  }
+
+  List<Map<String, dynamic>> _stripAvatarColorFromRows(
+    List<Map<String, dynamic>> rows,
+  ) {
+    return rows
+        .map(
+          (row) => {
+            for (final entry in row.entries)
+              if (entry.key != 'avatar_color') entry.key: entry.value,
+          },
+        )
+        .toList();
+  }
+
+  Future<T> _runSupabase<T>({
+    required String table,
+    required String operation,
+    required Future<T> Function() action,
+    Map<String, dynamic> payload = const {},
+  }) async {
+    try {
+      return await action();
+    } on PostgrestException catch (error) {
+      _logPostgrestError(
+        table: table,
+        operation: operation,
+        error: error,
+        payload: payload,
+      );
+      rethrow;
+    } catch (error) {
+      _logUnknownError(
+        table: table,
+        operation: operation,
+        error: error,
+        payload: payload,
+      );
+      rethrow;
+    }
+  }
+
   void _logPostgrestError({
+    required String table,
     required String operation,
     required PostgrestException error,
     required Map<String, dynamic> payload,
   }) {
     debugPrint(
-      'Supabase $operation failed. message=${error.message} '
+      'Supabase $table $operation failed. message=${error.message} '
       'code=${error.code} details=${error.details} hint=${error.hint} '
-      'user_id=${currentUser?.id} payload_keys=${payload.keys.toList()}',
+      'user_id=${currentUser?.id} session=${_client.auth.currentSession != null} '
+      'payload_keys=${payload.keys.toList()}',
     );
   }
 
   void _logUnknownError({
+    required String table,
     required String operation,
     required Object error,
     required Map<String, dynamic> payload,
   }) {
     debugPrint(
-      'Supabase $operation failed. error=$error '
+      'Supabase $table $operation failed. error=$error '
+      'user_id=${currentUser?.id} session=${_client.auth.currentSession != null} '
       'payload_keys=${payload.keys.toList()}',
     );
   }
@@ -589,12 +902,19 @@ class SupabaseRepository {
   }
 
   Future<void> _assertClientOwnership(String userId, String clientId) async {
-    final row = await _client
-        .from('clients')
-        .select('id')
-        .eq('id', clientId)
-        .eq('user_id', userId)
-        .maybeSingle();
+    final row = await _runSupabase(
+      table: 'clients',
+      operation: 'select',
+      payload: {'id': clientId, 'user_id': userId, 'columns': ['id']},
+      action: () async {
+        return _client
+            .from('clients')
+            .select('id')
+            .eq('id', clientId)
+            .eq('user_id', userId)
+            .maybeSingle();
+      },
+    );
     if (row == null) {
       throw StateError(
         'Selected client does not exist for the current user.',
