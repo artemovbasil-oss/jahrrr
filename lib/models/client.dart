@@ -37,7 +37,10 @@ class Client {
         : 'project';
     final type = json['type'] as String? ?? legacyType;
     final id = json['id'] as String? ?? (json['name'] as String? ?? '');
-    final avatarColorHex = json['avatarColorHex'] as String? ?? '';
+    final avatarColorHex = json['color'] as String? ??
+        json['avatarColorHex'] as String? ??
+        json['avatar_color'] as String? ??
+        '';
     final retainerSettingsJson = json['retainerSettings'] as Map<String, dynamic>?;
     final parsedRetainer = retainerSettingsJson == null
         ? _buildLegacyRetainerSettings(legacyProject, legacyBudget)
@@ -73,6 +76,7 @@ class Client {
       'plannedBudget': plannedBudget,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'color': avatarColorHex,
       'avatarColorHex': avatarColorHex,
       'retainerSettings': retainerSettings?.toJson(),
     };

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,6 +9,7 @@ import '../models/project.dart';
 import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
 import '../models/user_profile.dart';
+import '../utils/client_color.dart';
 
 enum ImportMode { replace, merge }
 
@@ -15,7 +17,7 @@ class SupabaseRepository {
   SupabaseRepository(this._client);
 
   final SupabaseClient _client;
-  bool _supportsAvatarColorColumn = true;
+  final Random _random = Random();
 
   User? get currentUser => _client.auth.currentUser;
 
@@ -246,7 +248,7 @@ class SupabaseRepository {
     final userId = _requireUserId();
     final decoded = jsonDecode(rawPayload) as Map<String, dynamic>;
     final data = decoded['data'] as Map<String, dynamic>? ?? {};
-    final clients = _sanitizeImportList(data['clients'], userId);
+    final clients = _sanitizeClientImportList(data['clients'], userId);
     final retainers = _sanitizeImportList(data['retainer_settings'], userId);
     final projects = _sanitizeImportList(data['projects'], userId)
         .map((row) => _projectImportPayload(row, userId))
@@ -566,6 +568,24 @@ class SupabaseRepository {
         .toList();
   }
 
+  List<Map<String, dynamic>> _sanitizeClientImportList(dynamic raw, String userId) {
+    if (raw is! List) {
+      return [];
+    }
+    return raw.whereType<Map<String, dynamic>>().map((row) {
+      final storedColor = (row['color'] ?? row['avatar_color']) as String?;
+      final normalizedColor = storedColor != null && storedColor.isNotEmpty
+          ? storedColor
+          : generateClientColorHex(_random);
+      return {
+        ...row,
+        'user_id': userId,
+        'color': normalizedColor,
+        'avatar_color': normalizedColor,
+      };
+    }).toList();
+  }
+
   Map<String, dynamic> _clientToRow(Client client, String userId) {
     final payload = {
       'id': client.id,
@@ -577,6 +597,9 @@ class SupabaseRepository {
       'email': client.email,
       'telegram': client.telegram,
       'planned_budget': client.plannedBudget,
+      'is_archived': client.isArchived,
+      'color': client.avatarColorHex,
+      'avatar_color': client.avatarColorHex,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
     };
@@ -691,7 +714,9 @@ class SupabaseRepository {
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
-      avatarColorHex: row['avatar_color'] as String? ?? '',
+      isArchived: row['is_archived'] as bool? ?? false,
+      avatarColorHex:
+          row['color'] as String? ?? row['avatar_color'] as String? ?? '',
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
