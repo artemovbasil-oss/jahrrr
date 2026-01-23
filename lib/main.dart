@@ -28,5 +28,7 @@ Future<void> main() async {
     url: resolvedUrl,
     anonKey: resolvedAnonKey,
   );
-  runApp(const JahrrrApp());
+  final themeController = AppThemeController(ThemeMode.system);
+  await themeController.load();
+  runApp(JahrrrApp(themeController: themeController));
 }
