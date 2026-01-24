@@ -219,14 +219,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   project: project,
                   clientName: _clientNameForId(project.clientId),
                   amountLabel: _formatCurrency(project.amount),
-                  clientTagColor:
-                      Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.6),
-                  stageTagColor: _clientColorForId(project.clientId).withOpacity(
-                    Theme.of(context).brightness == Brightness.dark ? 0.28 : 0.18,
-                  ),
-                  stageTextColor: Theme.of(context).brightness == Brightness.dark
-                      ? Theme.of(context).colorScheme.onSurface
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   progressValue: _projectStageProgress(project.status),
                   progressColor: _projectStageColor(project.status),
                   onTap: () {
@@ -1385,7 +1377,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showEditClientForm(Client client) {
-    final formKey = GlobalKey<FormState>();
     _clientNameController.text = client.name;
     _contactNameController.text = client.contactPerson ?? '';
     _contactPhoneController.text = client.phone ?? '';
@@ -1400,215 +1391,241 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? (client.retainerSettings?.amount ?? 0).toStringAsFixed(0)
         : (client.plannedBudget?.toStringAsFixed(0) ?? '');
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final contractLabel = _isRetainerClient(client) ? 'Retainer' : 'Project';
-            return AlertDialog(
-              title: const Text('Edit client'),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: _clientNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Client name',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a client name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Contract type: $contractLabel',
-                          style: Theme.of(context).textTheme.labelLarge,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ClientColorPicker(
-                        selectedColorHex: _selectedClientColorHex,
-                        showError: _showClientColorError,
-                        onColorSelected: (hex) {
-                          setDialogState(() {
-                            _selectedClientColorHex = normalizeClientColorHex(hex);
-                            _showClientColorError = false;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _plannedBudgetController,
-                        decoration: InputDecoration(
-                          labelText: _isRetainerClient(client)
-                              ? 'Retainer amount (\$)'
-                              : 'Planned budget (\$) (optional)',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        validator: (value) {
-                          final trimmed = value?.trim() ?? '';
-                          if (_isRetainerClient(client)) {
-                            if (trimmed.isEmpty) {
-                              return 'Enter a retainer amount';
-                            }
-                            final parsed =
-                                double.tryParse(trimmed.replaceAll(',', '.'));
-                            if (parsed == null || parsed <= 0) {
-                              return 'Enter a valid amount';
-                            }
-                          } else if (trimmed.isNotEmpty) {
-                            final parsed =
-                                double.tryParse(trimmed.replaceAll(',', '.'));
-                            if (parsed == null || parsed < 0) {
-                              return 'Enter a valid budget';
-                            }
-                          }
-                          return null;
-                        },
-                      ),
-                      if (_isRetainerClient(client)) ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          value: _selectedRetainerFrequency,
-                          decoration: const InputDecoration(
-                            labelText: 'Payment frequency',
-                          ),
-                          items: _retainerFrequencyLabels.entries
-                              .map(
-                                (entry) => DropdownMenuItem(
-                                  value: entry.key,
-                                  child: Text(entry.value),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              _selectedRetainerFrequency = value;
-                            });
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Select a payment frequency';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Next payment date'),
-                          subtitle: Text(
-                            _selectedRetainerPayDate == null
-                                ? 'Select a date'
-                                : _formatDate(_selectedRetainerPayDate!),
-                          ),
-                          trailing: const Icon(Icons.calendar_today_outlined),
-                          onTap: () async {
-                            final now = DateTime.now();
-                            final picked = await showDatePicker(
-                              context: dialogContext,
-                              initialDate: _selectedRetainerPayDate ?? now,
-                              firstDate: now,
-                              lastDate: DateTime(now.year + 5),
-                            );
-                            if (picked == null) {
-                              return;
-                            }
-                            setDialogState(() {
-                              _selectedRetainerPayDate = picked;
-                            });
-                          },
-                        ),
-                        if (_selectedRetainerPayDate == null) ...[
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Select a payment date',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              final contractLabel = _isRetainerClient(client) ? 'Retainer' : 'Project';
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Edit client'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: _clientFormKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextFormField(
+                            controller: _clientNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Client name',
                             ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a client name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Contract type: $contractLabel',
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          ClientColorPicker(
+                            selectedColorHex: _selectedClientColorHex,
+                            showError: _showClientColorError,
+                            onColorSelected: (hex) {
+                              setModalState(() {
+                                _selectedClientColorHex = normalizeClientColorHex(hex);
+                                _showClientColorError = false;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _plannedBudgetController,
+                            decoration: InputDecoration(
+                              labelText: _isRetainerClient(client)
+                                  ? 'Retainer amount (\$)'
+                                  : 'Planned budget (\$) (optional)',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              final trimmed = value?.trim() ?? '';
+                              if (_isRetainerClient(client)) {
+                                if (trimmed.isEmpty) {
+                                  return 'Enter a retainer amount';
+                                }
+                                final parsed = double.tryParse(
+                                  trimmed.replaceAll(',', '.'),
+                                );
+                                if (parsed == null || parsed <= 0) {
+                                  return 'Enter a valid amount';
+                                }
+                              } else if (trimmed.isNotEmpty) {
+                                final parsed = double.tryParse(
+                                  trimmed.replaceAll(',', '.'),
+                                );
+                                if (parsed == null || parsed < 0) {
+                                  return 'Enter a valid budget';
+                                }
+                              }
+                              return null;
+                            },
+                          ),
+                          if (_isRetainerClient(client)) ...[
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              value: _selectedRetainerFrequency,
+                              decoration: const InputDecoration(
+                                labelText: 'Payment frequency',
+                              ),
+                              items: _retainerFrequencyLabels.entries
+                                  .map(
+                                    (entry) => DropdownMenuItem(
+                                      value: entry.key,
+                                      child: Text(entry.value),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                setModalState(() {
+                                  _selectedRetainerFrequency = value;
+                                });
+                              },
+                              validator: (value) {
+                                if (!_isRetainerClient(client)) {
+                                  return null;
+                                }
+                                if (value == null || value.isEmpty) {
+                                  return 'Select a payment frequency';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Next payment date'),
+                              subtitle: Text(
+                                _selectedRetainerPayDate == null
+                                    ? 'Select a date'
+                                    : _formatDate(_selectedRetainerPayDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: routeContext,
+                                  initialDate: _selectedRetainerPayDate ?? now,
+                                  firstDate: now,
+                                  lastDate: DateTime(now.year + 5),
+                                );
+                                if (picked == null) {
+                                  return;
+                                }
+                                setModalState(() {
+                                  _selectedRetainerPayDate = picked;
+                                });
+                              },
+                            ),
+                            if (_selectedRetainerPayDate == null)
+                              Text(
+                                'Select a payment date',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.error,
+                                    ),
+                              ),
+                          ],
+                          const SizedBox(height: 20),
+                          const Divider(),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _contactNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Contact person',
+                            ),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _contactPhoneController,
+                            decoration: const InputDecoration(
+                              labelText: 'Phone',
+                            ),
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _contactEmailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _contactTelegramController,
+                            decoration: const InputDecoration(
+                              labelText: 'Telegram',
+                              hintText: '@username',
+                            ),
+                            textInputAction: TextInputAction.done,
                           ),
                         ],
-                      ],
-                      const SizedBox(height: 16),
-                      const Divider(),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _contactNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Contact person',
+                      ),
+                    ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(),
+                          child: const Text('Cancel'),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _contactPhoneController,
-                        decoration: const InputDecoration(
-                          labelText: 'Phone',
-                        ),
-                        keyboardType: TextInputType.phone,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _contactEmailController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _contactTelegramController,
-                        decoration: const InputDecoration(
-                          labelText: 'Telegram',
-                          hintText: '@username',
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid =
+                                _clientFormKey.currentState?.validate() ?? false;
+                            final hasColor = _selectedClientColorHex.trim().isNotEmpty;
+                            if (!hasColor) {
+                              setModalState(() {
+                                _showClientColorError = true;
+                              });
+                              return;
+                            }
+                            if (_isRetainerClient(client) &&
+                                _selectedRetainerPayDate == null) {
+                              setModalState(() {});
+                              return;
+                            }
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop();
+                            _updateClientFromForm(client);
+                          },
+                          child: const Text('Save'),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final isValid = formKey.currentState?.validate() ?? false;
-                    final hasColor = _selectedClientColorHex.trim().isNotEmpty;
-                    if (!hasColor) {
-                      setDialogState(() {
-                        _showClientColorError = true;
-                      });
-                      return;
-                    }
-                    if (_isRetainerClient(client) && _selectedRetainerPayDate == null) {
-                      setDialogState(() {});
-                      return;
-                    }
-                    if (!isValid) {
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop();
-                    _updateClientFromForm(client);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -2844,7 +2861,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (context) => MilestonesDeadlinesScreen(
           projects: projects,
           clientNameForId: _clientNameForId,
-          clientColorForId: _clientColorForId,
           formatCurrency: _formatCurrency,
           stageProgress: _projectStageProgress,
           stageColor: _projectStageColor,
