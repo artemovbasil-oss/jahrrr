@@ -192,173 +192,199 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final profile = widget.profile;
     final displayName = profile?.displayName ?? 'Your profile';
     final themeController = AppThemeScope.of(context);
+    const footerAppName = 'Jahrrr CRM';
+    const footerVersion = 'Version 0.2.0';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
+      body: Column(
         children: [
-          Row(
-            children: [
-              UserAvatar(
-                name: profile?.name,
-                email: profile?.email,
-                size: 56,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Row(
                   children: [
-                    Text(
-                      displayName,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                    UserAvatar(
+                      name: profile?.name,
+                      email: profile?.email,
+                      size: 56,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      profile?.email ?? '',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
+                          const SizedBox(height: 4),
+                          Text(
+                            profile?.email ?? '',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Profile details',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 24),
+                Text(
+                  'Profile details',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
-          ),
-          const SizedBox(height: 12),
-          Form(
-            key: _profileFormKey,
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full name',
+                const SizedBox(height: 12),
+                Form(
+                  key: _profileFormKey,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Full name',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().length < 2) {
+                            return 'Add your name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _emailController,
+                        enabled: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _savingProfile ? null : _saveProfile,
+                          child: _savingProfile
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Save changes'),
+                        ),
+                      ),
+                    ],
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().length < 2) {
-                      return 'Add your name';
-                    }
-                    return null;
-                  },
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _emailController,
-                  enabled: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
+                const SizedBox(height: 24),
+                Text(
+                  'Appearance',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Theme',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<ThemeMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: ThemeMode.system,
+                          label: Text('System'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.light,
+                          label: Text('Light'),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.dark,
+                          label: Text('Dark'),
+                        ),
+                      ],
+                      selected: {themeController.themeMode},
+                      onSelectionChanged: (selection) async {
+                        await themeController.setThemeMode(selection.first);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Data',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.upload_file_outlined),
+                  title: const Text('Export data'),
+                  subtitle: const Text(
+                    'Save and share a JSON backup of your workspace.',
                   ),
+                  trailing: _exporting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  onTap: _exporting ? null : _exportData,
                 ),
-                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(Icons.download_outlined),
+                  title: const Text('Import data'),
+                  subtitle: const Text(
+                    'Restore from a previously exported JSON file.',
+                  ),
+                  trailing: _importing
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  onTap: _importing ? null : _importData,
+                ),
+                const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _savingProfile ? null : _saveProfile,
-                    child: _savingProfile
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save changes'),
+                  child: OutlinedButton(
+                    onPressed: _logout,
+                    child: const Text('Log out'),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            'Appearance',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Theme',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<ThemeMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: ThemeMode.system,
-                    label: Text('System'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Text(
+              '$footerAppName • $footerVersion',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withOpacity(0.7),
+                    letterSpacing: 0.2,
                   ),
-                  ButtonSegment(
-                    value: ThemeMode.light,
-                    label: Text('Light'),
-                  ),
-                  ButtonSegment(
-                    value: ThemeMode.dark,
-                    label: Text('Dark'),
-                  ),
-                ],
-                selected: {themeController.themeMode},
-                onSelectionChanged: (selection) async {
-                  await themeController.setThemeMode(selection.first);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Data',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            leading: const Icon(Icons.upload_file_outlined),
-            title: const Text('Export data'),
-            subtitle: const Text('Save and share a JSON backup of your workspace.'),
-            trailing: _exporting
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-            onTap: _exporting ? null : _exportData,
-          ),
-          ListTile(
-            leading: const Icon(Icons.download_outlined),
-            title: const Text('Import data'),
-            subtitle: const Text('Restore from a previously exported JSON file.'),
-            trailing: _importing
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-            onTap: _importing ? null : _importData,
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _logout,
-              child: const Text('Log out'),
             ),
           ),
         ],
