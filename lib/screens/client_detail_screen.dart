@@ -1533,7 +1533,6 @@ class _InfoChipsRow extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: Row(
                   children: chips
