@@ -2,10 +2,10 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../controllers/sync_status_controller.dart';
 import '../models/client.dart';
 import '../models/project.dart';
 import '../models/project_payment.dart';
@@ -68,7 +68,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String? _selectedClientStatus;
   String? _selectedContractType;
-  late final Future<PackageInfo> _packageInfoFuture;
   final GlobalKey<FormState> _clientFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _projectFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _paymentFormKey = GlobalKey<FormState>();
@@ -100,6 +99,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   _BootstrapFailure? _bootstrapFailure;
   UserProfile? _profile;
   late final SupabaseRepository _repository;
+  late final SyncStatusController _syncStatusController;
   final Random _random = Random();
 
   final List<Client> _clients = [];
@@ -109,7 +109,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _repository = widget.repository;
-    _packageInfoFuture = PackageInfo.fromPlatform();
+    _syncStatusController = SyncStatusController();
     _scrollController = ScrollController();
     _scrollController.addListener(_handleScroll);
     _loadProfile();
@@ -130,6 +130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _projectAmountController.dispose();
     _paymentAmountController.dispose();
     _searchController.dispose();
+    _syncStatusController.dispose();
     super.dispose();
   }
 
@@ -247,50 +248,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceVariant
-                                  .withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              _clientNameForId(project.clientId),
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        Flexible(
+                          child: _ProjectTag(
+                            text: _clientNameForId(project.clientId),
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .surfaceVariant
+                                .withOpacity(0.6),
+                            textColor: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _clientColorForId(project.clientId).withOpacity(0.18),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            projectStageLabels[project.status] ?? project.status,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
+                        const Spacer(),
+                        Flexible(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _ProjectTag(
+                              text: projectStageLabels[project.status] ?? project.status,
+                              backgroundColor:
+                                  _clientColorForId(project.clientId).withOpacity(0.18),
+                              textColor:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                              textAlign: TextAlign.right,
+                            ),
                           ),
                         ),
                       ],
@@ -406,19 +385,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                   ),
                   const SizedBox(height: 4),
-                  FutureBuilder<PackageInfo>(
-                    future: _packageInfoFuture,
-                    builder: (context, snapshot) {
-                      final version = snapshot.data?.version;
-                      final subtitle = version == null ? 'Jahrrr' : 'Jahrrr v$version';
-                      return Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                      );
-                    },
-                  ),
+                  _buildSyncStatusIndicator(),
                 ],
               ),
         actions: [
@@ -671,15 +638,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _bootstrapData() async {
+  Future<bool> _bootstrapData() async {
     if (!mounted) {
-      return;
+      return false;
     }
+    _syncStatusController.setLoading();
     setState(() {
       _isLoading = true;
       _bootstrapFailure = null;
     });
 
+    var success = false;
     final auth = Supabase.instance.client.auth;
     final session = auth.currentSession;
     if (session == null) {
@@ -695,7 +664,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _isLoading = false;
         });
       }
-      return;
+      return false;
     }
 
     if (auth.currentUser == null) {
@@ -752,18 +721,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ..clear()
           ..addAll(payments);
       });
+      _syncStatusController.setSynced();
+      success = true;
     } on _BootstrapFailure catch (failure) {
       _handleBootstrapFailure(failure);
+      success = false;
     } catch (error) {
       _handleBootstrapFailure(_BootstrapFailure(source: 'bootstrap', error: error));
+      success = false;
     } finally {
       if (!mounted) {
-        return;
+        return false;
       }
       setState(() {
         _isLoading = false;
       });
     }
+    return success;
   }
 
   Future<T> _wrapBootstrapCall<T>(
@@ -788,6 +762,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _projects.clear();
       _projectPayments.clear();
     });
+    _showSnackBar(context, 'Не удалось синхронизировать данные.');
   }
 
   void _logBootstrapFailure(_BootstrapFailure failure) {
@@ -869,17 +844,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<bool> _persistData() async {
     try {
+      _syncStatusController.setLoading();
       await _repository.syncAll(
         clients: _clients,
         projects: _projects,
         payments: _projectPayments,
       );
-      await _bootstrapData();
+      final refreshed = await _bootstrapData();
+      if (!refreshed) {
+        return false;
+      }
+      _syncStatusController.setSynced();
       return true;
     } catch (_) {
       _showSnackBar(context, 'Failed to save changes.');
       return false;
     }
+  }
+
+  Widget _buildSyncStatusIndicator() {
+    return AnimatedBuilder(
+      animation: _syncStatusController,
+      builder: (context, _) {
+        final isLoading = _syncStatusController.isLoading;
+        final label = isLoading ? 'Загружаем данные' : 'Данные обновлены';
+        final color = isLoading ? const Color(0xFFFFC107) : const Color(0xFF2E7D32);
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _handleScroll() {
@@ -1143,231 +1159,253 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _selectedRetainerFrequency = null;
     _selectedRetainerPayDate = null;
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('New client'),
-              content: Form(
-                key: _clientFormKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: _clientNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Client name',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a client name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Contract type',
-                          style: Theme.of(context).textTheme.labelLarge,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: const {
-                          'project': 'Project',
-                          'retainer': 'Retainer',
-                        }.entries.map((entry) {
-                          return ChoiceChip(
-                            label: Text(entry.value),
-                            selected: _selectedContractType == entry.key,
-                            onSelected: (_) {
-                              setDialogState(() {
-                                _selectedContractType = entry.key;
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                      if (_selectedContractType == null) ...[
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Select a contract type',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _plannedBudgetController,
-                        decoration: InputDecoration(
-                          labelText: _selectedContractType == 'retainer'
-                              ? 'Retainer amount (\$)'
-                              : 'Planned budget (\$) (optional)',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        validator: (value) {
-                          final trimmed = value?.trim() ?? '';
-                          if (_selectedContractType == 'retainer') {
-                            if (trimmed.isEmpty) {
-                              return 'Enter a retainer amount';
-                            }
-                            final parsed = double.tryParse(trimmed.replaceAll(',', '.'));
-                            if (parsed == null || parsed <= 0) {
-                              return 'Enter a valid amount';
-                            }
-                          } else if (trimmed.isNotEmpty) {
-                            final parsed = double.tryParse(trimmed.replaceAll(',', '.'));
-                            if (parsed == null || parsed < 0) {
-                              return 'Enter a valid budget';
-                            }
-                          }
-                          return null;
-                        },
-                      ),
-                      if (_selectedContractType == 'retainer') ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          value: _selectedRetainerFrequency,
-                          decoration: const InputDecoration(
-                            labelText: 'Payment frequency',
-                          ),
-                          items: _retainerFrequencyLabels.entries
-                              .map(
-                                (entry) => DropdownMenuItem(
-                                  value: entry.key,
-                                  child: Text(entry.value),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              _selectedRetainerFrequency = value;
-                            });
-                          },
-                          validator: (value) {
-                            if (_selectedContractType != 'retainer') {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('New client'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: _clientFormKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextFormField(
+                            controller: _clientNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Client name',
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a client name';
+                              }
                               return null;
-                            }
-                            if (value == null || value.isEmpty) {
-                              return 'Select a payment frequency';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Next payment date'),
-                          subtitle: Text(
-                            _selectedRetainerPayDate == null
-                                ? 'Select a date'
-                                : _formatDate(_selectedRetainerPayDate!),
+                            },
                           ),
-                          trailing: const Icon(Icons.calendar_today_outlined),
-                          onTap: () async {
-                            final now = DateTime.now();
-                            final picked = await showDatePicker(
-                              context: dialogContext,
-                              initialDate: _selectedRetainerPayDate ?? now,
-                              firstDate: now,
-                              lastDate: DateTime(now.year + 5),
-                            );
-                            if (picked == null) {
-                              return;
-                            }
-                            setDialogState(() {
-                              _selectedRetainerPayDate = picked;
-                            });
-                          },
-                        ),
-                        if (_selectedRetainerPayDate == null) ...[
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Select a payment date',
+                          const SizedBox(height: 16),
+                          Text(
+                            'Contract type',
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            children: const {
+                              'project': 'Project',
+                              'retainer': 'Retainer',
+                            }.entries.map((entry) {
+                              return ChoiceChip(
+                                label: Text(entry.value),
+                                selected: _selectedContractType == entry.key,
+                                onSelected: (_) {
+                                  setModalState(() {
+                                    _selectedContractType = entry.key;
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                          if (_selectedContractType == null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Select a contract type',
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: Theme.of(context).colorScheme.error,
                                   ),
                             ),
+                          ],
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _plannedBudgetController,
+                            decoration: InputDecoration(
+                              labelText: _selectedContractType == 'retainer'
+                                  ? 'Retainer amount (\$)'
+                                  : 'Planned budget (\$) (optional)',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              final trimmed = value?.trim() ?? '';
+                              if (_selectedContractType == 'retainer') {
+                                if (trimmed.isEmpty) {
+                                  return 'Enter a retainer amount';
+                                }
+                                final parsed = double.tryParse(
+                                  trimmed.replaceAll(',', '.'),
+                                );
+                                if (parsed == null || parsed <= 0) {
+                                  return 'Enter a valid amount';
+                                }
+                              } else if (trimmed.isNotEmpty) {
+                                final parsed = double.tryParse(
+                                  trimmed.replaceAll(',', '.'),
+                                );
+                                if (parsed == null || parsed < 0) {
+                                  return 'Enter a valid budget';
+                                }
+                              }
+                              return null;
+                            },
+                          ),
+                          if (_selectedContractType == 'retainer') ...[
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              value: _selectedRetainerFrequency,
+                              decoration: const InputDecoration(
+                                labelText: 'Payment frequency',
+                              ),
+                              items: _retainerFrequencyLabels.entries
+                                  .map(
+                                    (entry) => DropdownMenuItem(
+                                      value: entry.key,
+                                      child: Text(entry.value),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                setModalState(() {
+                                  _selectedRetainerFrequency = value;
+                                });
+                              },
+                              validator: (value) {
+                                if (_selectedContractType != 'retainer') {
+                                  return null;
+                                }
+                                if (value == null || value.isEmpty) {
+                                  return 'Select a payment frequency';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Next payment date'),
+                              subtitle: Text(
+                                _selectedRetainerPayDate == null
+                                    ? 'Select a date'
+                                    : _formatDate(_selectedRetainerPayDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: routeContext,
+                                  initialDate: _selectedRetainerPayDate ?? now,
+                                  firstDate: now,
+                                  lastDate: DateTime(now.year + 5),
+                                );
+                                if (picked == null) {
+                                  return;
+                                }
+                                setModalState(() {
+                                  _selectedRetainerPayDate = picked;
+                                });
+                              },
+                            ),
+                            if (_selectedRetainerPayDate == null)
+                              Text(
+                                'Select a payment date',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.error,
+                                    ),
+                              ),
+                          ],
+                          const SizedBox(height: 20),
+                          const Divider(),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _contactNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Contact person',
+                            ),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _contactPhoneController,
+                            decoration: const InputDecoration(
+                              labelText: 'Phone',
+                            ),
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _contactEmailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _contactTelegramController,
+                            decoration: const InputDecoration(
+                              labelText: 'Telegram',
+                              hintText: '@username',
+                            ),
+                            textInputAction: TextInputAction.done,
                           ),
                         ],
-                      ],
-                      const SizedBox(height: 16),
-                      const Divider(),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _contactNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Contact person',
+                      ),
+                    ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(),
+                          child: const Text('Cancel'),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _contactPhoneController,
-                        decoration: const InputDecoration(
-                          labelText: 'Phone',
-                        ),
-                        keyboardType: TextInputType.phone,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _contactEmailController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _contactTelegramController,
-                        decoration: const InputDecoration(
-                          labelText: 'Telegram',
-                          hintText: '@username',
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid =
+                                _clientFormKey.currentState?.validate() ?? false;
+                            if (_selectedContractType == null) {
+                              setModalState(() {});
+                              return;
+                            }
+                            if (_selectedContractType == 'retainer' &&
+                                _selectedRetainerPayDate == null) {
+                              setModalState(() {});
+                              return;
+                            }
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop();
+                            _addClient();
+                          },
+                          child: const Text('Add client'),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final isValid = _clientFormKey.currentState?.validate() ?? false;
-                    if (_selectedContractType == null) {
-                      setDialogState(() {});
-                      return;
-                    }
-                    if (_selectedContractType == 'retainer' && _selectedRetainerPayDate == null) {
-                      setDialogState(() {});
-                      return;
-                    }
-                    if (!isValid) {
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop();
-                    _addClient();
-                  },
-                  child: const Text('Add client'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -1858,152 +1896,179 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _selectedProjectStage = 'first_meeting';
     _selectedProjectDeadline = null;
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('New project'),
-              content: Form(
-                key: _projectFormKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('New project'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: _projectFormKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: _selectedProjectClient,
+                            decoration: const InputDecoration(
+                              labelText: 'Client',
+                            ),
+                            items: eligibleClients
+                                .map(
+                                  (client) => DropdownMenuItem(
+                                    value: client.id,
+                                    child: Text(
+                                      client.name,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setModalState(() {
+                                _selectedProjectClient = value;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select a client';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _projectNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Project name',
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a project name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _projectAmountController,
+                            decoration: const InputDecoration(
+                              labelText: 'Project amount (\$)',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a project amount';
+                              }
+                              final parsed = double.tryParse(
+                                value.replaceAll(',', '.'),
+                              );
+                              if (parsed == null || parsed <= 0) {
+                                return 'Enter a valid amount';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: _selectedProjectStage,
+                            decoration: const InputDecoration(
+                              labelText: 'Project stage',
+                            ),
+                            items: projectStageLabels.entries
+                                .map(
+                                  (entry) => DropdownMenuItem(
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setModalState(() {
+                                _selectedProjectStage = value;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select a project stage';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Deadline (optional)'),
+                            subtitle: Text(
+                              _selectedProjectDeadline == null
+                                  ? 'Select a date'
+                                  : _formatDate(_selectedProjectDeadline!),
+                            ),
+                            trailing: const Icon(Icons.calendar_today_outlined),
+                            onTap: () async {
+                              final now = DateTime.now();
+                              final picked = await showDatePicker(
+                                context: routeContext,
+                                initialDate: _selectedProjectDeadline ?? now,
+                                firstDate: now,
+                                lastDate: DateTime(now.year + 5),
+                              );
+                              if (picked == null) {
+                                return;
+                              }
+                              setModalState(() {
+                                _selectedProjectDeadline = picked;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
                     children: [
-                      DropdownButtonFormField<String>(
-                        value: _selectedProjectClient,
-                        decoration: const InputDecoration(
-                          labelText: 'Client',
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(),
+                          child: const Text('Cancel'),
                         ),
-                        items: eligibleClients
-                            .map(
-                              (client) => DropdownMenuItem(
-                                value: client.id,
-                                child: Text(client.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            _selectedProjectClient = value;
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Select a client';
-                          }
-                          return null;
-                        },
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _projectNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Project name',
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid =
+                                _projectFormKey.currentState?.validate() ?? false;
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop();
+                            _addProject();
+                          },
+                          child: const Text('Add project'),
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a project name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _projectAmountController,
-                        decoration: const InputDecoration(
-                          labelText: 'Project amount (\$)',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a project amount';
-                          }
-                          final parsed = double.tryParse(value.replaceAll(',', '.'));
-                          if (parsed == null || parsed <= 0) {
-                            return 'Enter a valid amount';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedProjectStage,
-                        decoration: const InputDecoration(
-                          labelText: 'Project stage',
-                        ),
-                        items: projectStageLabels.entries
-                            .map(
-                              (entry) => DropdownMenuItem(
-                                value: entry.key,
-                                child: Text(entry.value),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            _selectedProjectStage = value;
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Select a project stage';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Deadline (optional)'),
-                        subtitle: Text(
-                          _selectedProjectDeadline == null
-                              ? 'Select a date'
-                              : _formatDate(_selectedProjectDeadline!),
-                        ),
-                        trailing: const Icon(Icons.calendar_today_outlined),
-                        onTap: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: dialogContext,
-                            initialDate: _selectedProjectDeadline ?? now,
-                            firstDate: now,
-                            lastDate: DateTime(now.year + 5),
-                          );
-                          if (picked == null) {
-                            return;
-                          }
-                          setDialogState(() {
-                            _selectedProjectDeadline = picked;
-                          });
-                        },
                       ),
                     ],
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final isValid = _projectFormKey.currentState?.validate() ?? false;
-                    if (!isValid) {
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop();
-                    _addProject();
-                  },
-                  child: const Text('Add project'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -2015,202 +2080,230 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _selectedPaymentPaidDate = null;
     _selectedPaymentStatus = 'planned';
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final projectOptions =
-                _projects.where((project) => _clientById(project.clientId) != null).toList();
-            return AlertDialog(
-              title: const Text('New payment'),
-              content: Form(
-                key: _paymentFormKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value: _selectedPaymentProjectId,
-                        decoration: const InputDecoration(
-                          labelText: 'Project',
-                        ),
-                        items: projectOptions
-                            .map(
-                              (project) => DropdownMenuItem(
-                                value: project.id,
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              final projectOptions = _projects
+                  .where((project) => _clientById(project.clientId) != null)
+                  .toList();
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('New payment'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: _paymentFormKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: _selectedPaymentProjectId,
+                            decoration: const InputDecoration(
+                              labelText: 'Project',
+                            ),
+                            items: projectOptions
+                                .map(
+                                  (project) => DropdownMenuItem(
+                                    value: project.id,
+                                    child: Text(
+                                      '${_clientNameForId(project.clientId)} • ${project.title}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setModalState(() {
+                                _selectedPaymentProjectId = value;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select a project';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _paymentAmountController,
+                            decoration: const InputDecoration(
+                              labelText: 'Payment amount (\$)',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a payment amount';
+                              }
+                              final parsed = double.tryParse(
+                                value.replaceAll(',', '.'),
+                              );
+                              if (parsed == null || parsed <= 0) {
+                                return 'Enter a valid amount';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: _selectedPaymentKind,
+                            decoration: const InputDecoration(
+                              labelText: 'Payment kind',
+                            ),
+                            items: _paymentKindLabels.entries
+                                .map(
+                                  (entry) => DropdownMenuItem(
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setModalState(() {
+                                _selectedPaymentKind = value;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select a payment kind';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: _selectedPaymentStatus,
+                            decoration: const InputDecoration(
+                              labelText: 'Status',
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: 'planned', child: Text('Planned')),
+                              DropdownMenuItem(value: 'paid', child: Text('Paid')),
+                            ],
+                            onChanged: (value) {
+                              setModalState(() {
+                                _selectedPaymentStatus = value;
+                                if (value != 'paid') {
+                                  _selectedPaymentPaidDate = null;
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Due date (optional)'),
+                            subtitle: Text(
+                              _selectedPaymentDueDate == null
+                                  ? 'Select a date'
+                                  : _formatDate(_selectedPaymentDueDate!),
+                            ),
+                            trailing: const Icon(Icons.calendar_today_outlined),
+                            onTap: () async {
+                              final now = DateTime.now();
+                              final picked = await showDatePicker(
+                                context: routeContext,
+                                initialDate: _selectedPaymentDueDate ?? now,
+                                firstDate: DateTime(now.year - 5),
+                                lastDate: DateTime(now.year + 5),
+                              );
+                              if (picked == null) {
+                                return;
+                              }
+                              setModalState(() {
+                                _selectedPaymentDueDate = picked;
+                              });
+                            },
+                          ),
+                          if (_selectedPaymentStatus == 'paid') ...[
+                            const SizedBox(height: 12),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Paid date'),
+                              subtitle: Text(
+                                _selectedPaymentPaidDate == null
+                                    ? 'Select a date'
+                                    : _formatDate(_selectedPaymentPaidDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: routeContext,
+                                  initialDate: _selectedPaymentPaidDate ?? now,
+                                  firstDate: DateTime(now.year - 5),
+                                  lastDate: DateTime(now.year + 5),
+                                );
+                                if (picked == null) {
+                                  return;
+                                }
+                                setModalState(() {
+                                  _selectedPaymentPaidDate = picked;
+                                });
+                              },
+                            ),
+                            if (_selectedPaymentPaidDate == null)
+                              Align(
+                                alignment: Alignment.centerLeft,
                                 child: Text(
-                                  '${_clientNameForId(project.clientId)} • ${project.title}',
+                                  'Select a paid date',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Theme.of(context).colorScheme.error,
+                                      ),
                                 ),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            _selectedPaymentProjectId = value;
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Select a project';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _paymentAmountController,
-                        decoration: const InputDecoration(
-                          labelText: 'Payment amount (\$)',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a payment amount';
-                          }
-                          final parsed = double.tryParse(value.replaceAll(',', '.'));
-                          if (parsed == null || parsed <= 0) {
-                            return 'Enter a valid amount';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedPaymentKind,
-                        decoration: const InputDecoration(
-                          labelText: 'Payment kind',
-                        ),
-                        items: _paymentKindLabels.entries
-                            .map(
-                              (entry) => DropdownMenuItem(
-                                value: entry.key,
-                                child: Text(entry.value),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            _selectedPaymentKind = value;
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Select a payment kind';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedPaymentStatus,
-                        decoration: const InputDecoration(
-                          labelText: 'Status',
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'planned', child: Text('Planned')),
-                          DropdownMenuItem(value: 'paid', child: Text('Paid')),
+                          ],
                         ],
-                        onChanged: (value) {
-                          setDialogState(() {
-                            _selectedPaymentStatus = value;
-                          });
-                        },
                       ),
-                      const SizedBox(height: 12),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Due date (optional)'),
-                        subtitle: Text(
-                          _selectedPaymentDueDate == null
-                              ? 'Select a date'
-                              : _formatDate(_selectedPaymentDueDate!),
+                    ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(),
+                          child: const Text('Cancel'),
                         ),
-                        trailing: const Icon(Icons.calendar_today_outlined),
-                        onTap: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: dialogContext,
-                            initialDate: _selectedPaymentDueDate ?? now,
-                            firstDate: DateTime(now.year - 5),
-                            lastDate: DateTime(now.year + 5),
-                          );
-                          if (picked == null) {
-                            return;
-                          }
-                          setDialogState(() {
-                            _selectedPaymentDueDate = picked;
-                          });
-                        },
                       ),
-                      if (_selectedPaymentStatus == 'paid') ...[
-                        const SizedBox(height: 12),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Paid date'),
-                          subtitle: Text(
-                            _selectedPaymentPaidDate == null
-                                ? 'Select a date'
-                                : _formatDate(_selectedPaymentPaidDate!),
-                          ),
-                          trailing: const Icon(Icons.calendar_today_outlined),
-                          onTap: () async {
-                            final now = DateTime.now();
-                            final picked = await showDatePicker(
-                              context: dialogContext,
-                              initialDate: _selectedPaymentPaidDate ?? now,
-                              firstDate: DateTime(now.year - 5),
-                              lastDate: DateTime(now.year + 5),
-                            );
-                            if (picked == null) {
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid =
+                                _paymentFormKey.currentState?.validate() ?? false;
+                            if (_selectedPaymentStatus == 'paid' &&
+                                _selectedPaymentPaidDate == null) {
+                              setModalState(() {});
                               return;
                             }
-                            setDialogState(() {
-                              _selectedPaymentPaidDate = picked;
-                            });
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop();
+                            _addPayment();
                           },
+                          child: const Text('Add payment'),
                         ),
-                        if (_selectedPaymentPaidDate == null) ...[
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Select a paid date',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ],
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final isValid = _paymentFormKey.currentState?.validate() ?? false;
-                    if (_selectedPaymentStatus == 'paid' && _selectedPaymentPaidDate == null) {
-                      setDialogState(() {});
-                      return;
-                    }
-                    if (!isValid) {
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop();
-                    _addPayment();
-                  },
-                  child: const Text('Add payment'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -2294,6 +2387,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       updatedAt: now,
     );
     try {
+      _syncStatusController.setLoading();
       final saved = await _repository.createProject(newProject);
       if (!mounted) {
         return;
@@ -2301,6 +2395,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _projects.add(saved);
       });
+      final refreshed = await _bootstrapData();
+      if (!mounted || !refreshed) {
+        return;
+      }
+      _syncStatusController.setSynced();
       _showSnackBar(context, 'Project added');
     } catch (error) {
       if (!mounted) {
@@ -2312,6 +2411,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _addProjectFromDetails(Project project) async {
     try {
+      _syncStatusController.setLoading();
       final saved = await _repository.createProject(project);
       if (!mounted) {
         return;
@@ -2319,6 +2419,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _projects.add(saved);
       });
+      final refreshed = await _bootstrapData();
+      if (!mounted || !refreshed) {
+        return;
+      }
+      _syncStatusController.setSynced();
       _showSnackBar(context, 'Project added');
     } catch (error) {
       if (!mounted) {
@@ -3284,6 +3389,41 @@ class _PaymentPill extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ProjectTag extends StatelessWidget {
+  const _ProjectTag({
+    required this.text,
+    required this.backgroundColor,
+    required this.textColor,
+    this.textAlign = TextAlign.left,
+  });
+
+  final String text;
+  final Color backgroundColor;
+  final Color textColor;
+  final TextAlign textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: textAlign,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
       ),
     );
   }

@@ -17,6 +17,16 @@ flutter pub get
 flutter run --dart-define=SUPABASE_URL=your-project-url --dart-define=SUPABASE_ANON_KEY=your-anon-key
 ```
 
+## App icon generation
+
+The launcher icon source file lives at `assets/icon/app_icon.png`. Generate
+platform icons locally after fetching dependencies:
+
+```bash
+flutter pub get
+dart run flutter_launcher_icons
+```
+
 ## Supabase configuration
 
 The app uses Supabase for authentication and storage. Provide the URL and anon key via `--dart-define` (do not commit keys).

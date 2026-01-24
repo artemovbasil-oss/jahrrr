@@ -1,5 +1,5 @@
 name: jahrrr
-version: 0.1.0
+version: 0.2.0+1
 publish_to: "none"
 
 description: CRM for designers to track clients, budgets, milestones, payments, deadlines, and analytics.
@@ -23,6 +23,15 @@ dependencies:
 
 dev_dependencies:
   flutter_lints: ^3.0.2
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/app_icon.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icon/app_icon.png
+  remove_alpha_ios: true
