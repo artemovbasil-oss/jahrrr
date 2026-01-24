@@ -49,8 +49,21 @@ class ClientDetailScreen extends StatefulWidget {
   State<ClientDetailScreen> createState() => _ClientDetailScreenState();
 }
 
-class _ClientDetailScreenState extends State<ClientDetailScreen> {
+class _SheetAction {
+  const _SheetAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.isDestructive = false,
+  });
 
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool isDestructive;
+}
+
+class _ClientDetailScreenState extends State<ClientDetailScreen> {
   late List<Project> _projects;
   late List<ProjectPayment> _payments;
   late Client _client;
@@ -85,31 +98,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       appBar: AppBar(
         title: Text(_client.name),
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_horiz),
-            onSelected: (value) {
-              if (value == 'edit') {
-                _editClient();
-              } else if (value == 'delete') {
-                _confirmDeleteClient();
-              } else if (value == 'duplicate') {
-                _duplicateClient();
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'edit',
-                child: Text('Edit'),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Text('Delete'),
-              ),
-              PopupMenuItem(
-                value: 'duplicate',
-                child: Text('Duplicate'),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Client actions',
+            onPressed: _showClientActionsSheet,
           ),
         ],
       ),
@@ -174,9 +166,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               child: _ProjectRow(
                                 project: project,
-                                onEdit: () => _editProject(project),
-                                onDelete: () => _deleteProject(project),
-                                onDuplicate: () => _duplicateProject(project),
+                                onActionsPressed: () => _showProjectActionsSheet(project),
                                 formatDate: _formatDate,
                                 formatCurrency: _formatCurrency,
                                 stageLabel:
@@ -200,16 +190,12 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                             payment: payment,
                             formatDate: _formatDate,
                             formatCurrency: _formatCurrency,
-                            onEdit: payment.sourcePayment == null
+                            onActionsPressed: payment.sourcePayment == null
                                 ? null
-                                : () => _editPayment(payment.sourcePayment!),
-                            onDelete: payment.sourcePayment == null
-                                ? null
-                                : () => _deletePayment(payment.sourcePayment!),
-                            onMarkPaid:
-                                payment.sourcePayment?.status == 'planned'
-                                    ? () => _markPaymentAsPaid(payment.sourcePayment!)
-                                    : null,
+                                : () => _showPaymentActionsSheet(
+                                      payment,
+                                      includeMarkPaid: payment.sourcePayment?.status == 'planned',
+                                    ),
                           ),
                         )
                         .toList(),
@@ -227,12 +213,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                             payment: payment,
                             formatDate: _formatDate,
                             formatCurrency: _formatCurrency,
-                            onEdit: payment.sourcePayment == null
+                            onActionsPressed: payment.sourcePayment == null
                                 ? null
-                                : () => _editPayment(payment.sourcePayment!),
-                            onDelete: payment.sourcePayment == null
-                                ? null
-                                : () => _deletePayment(payment.sourcePayment!),
+                                : () => _showPaymentActionsSheet(payment),
                           ),
                         )
                         .toList(),
@@ -298,6 +281,159 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showActionsSheet({
+    String? title,
+    required List<_SheetAction> actions,
+  }) {
+    final theme = Theme.of(context);
+    return showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottomPadding = MediaQuery.of(sheetContext).viewPadding.bottom;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    height: 4,
+                    width: 40,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                if (title != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                ...actions.map(
+                  (action) {
+                    final actionColor = action.isDestructive
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.onSurface;
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: Icon(action.icon, color: actionColor),
+                      title: Text(
+                        action.label,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: actionColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        action.onTap();
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showClientActionsSheet() {
+    _showActionsSheet(
+      title: _client.name,
+      actions: [
+        _SheetAction(
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          onTap: _editClient,
+        ),
+        _SheetAction(
+          label: 'Duplicate',
+          icon: Icons.copy_all_outlined,
+          onTap: _duplicateClient,
+        ),
+        _SheetAction(
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          onTap: _confirmDeleteClient,
+          isDestructive: true,
+        ),
+      ],
+    );
+  }
+
+  void _showProjectActionsSheet(Project project) {
+    _showActionsSheet(
+      title: project.title,
+      actions: [
+        _SheetAction(
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          onTap: () => _editProject(project),
+        ),
+        _SheetAction(
+          label: 'Duplicate',
+          icon: Icons.copy_all_outlined,
+          onTap: () => _duplicateProject(project),
+        ),
+        _SheetAction(
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          onTap: () => _deleteProject(project),
+          isDestructive: true,
+        ),
+      ],
+    );
+  }
+
+  void _showPaymentActionsSheet(
+    _ClientPaymentDisplay payment, {
+    bool includeMarkPaid = false,
+  }) {
+    final sourcePayment = payment.sourcePayment;
+    if (sourcePayment == null) {
+      return;
+    }
+    _showActionsSheet(
+      title: payment.title,
+      actions: [
+        if (includeMarkPaid)
+          _SheetAction(
+            label: 'Mark as paid',
+            icon: Icons.check_circle_outline,
+            onTap: () => _markPaymentAsPaid(sourcePayment),
+          ),
+        _SheetAction(
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          onTap: () => _editPayment(sourcePayment),
+        ),
+        _SheetAction(
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          onTap: () => _deletePayment(sourcePayment),
+          isDestructive: true,
+        ),
+      ],
     );
   }
 
@@ -1390,18 +1526,24 @@ class _InfoChipsRow extends StatelessWidget {
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(
-                children: chips
-                    .map(
-                      (chip) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Chip(
-                          label: Text(chip),
-                          visualDensity: VisualDensity.compact,
-                        ),
+              child: ChipTheme(
+                data: ChipTheme.of(context).copyWith(
+                  labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
-                    )
-                    .toList(),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                ),
+                child: Row(
+                  children: chips
+                      .map(
+                        (chip) => Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Chip(label: Text(chip)),
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
             ),
           ),
@@ -1463,18 +1605,14 @@ class _InfoLinkRow extends StatelessWidget {
 class _ProjectRow extends StatelessWidget {
   const _ProjectRow({
     required this.project,
-    required this.onDuplicate,
-    required this.onEdit,
-    required this.onDelete,
+    required this.onActionsPressed,
     required this.formatDate,
     required this.formatCurrency,
     required this.stageLabel,
   });
 
   final Project project;
-  final VoidCallback onDuplicate;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onActionsPressed;
   final String Function(DateTime) formatDate;
   final String Function(double) formatCurrency;
   final String stageLabel;
@@ -1524,31 +1662,10 @@ class _ProjectRow extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
         ),
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_horiz),
-          onSelected: (value) {
-            if (value == 'edit') {
-              onEdit();
-            } else if (value == 'delete') {
-              onDelete();
-            } else if (value == 'duplicate') {
-              onDuplicate();
-            }
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: 'edit',
-              child: Text('Edit'),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Text('Delete'),
-            ),
-            PopupMenuItem(
-              value: 'duplicate',
-              child: Text('Duplicate'),
-            ),
-          ],
+        IconButton(
+          icon: const Icon(Icons.more_vert),
+          tooltip: 'Project actions',
+          onPressed: onActionsPressed,
         ),
       ],
     );
@@ -1560,17 +1677,13 @@ class _PaymentRow extends StatelessWidget {
     required this.payment,
     required this.formatDate,
     required this.formatCurrency,
-    this.onEdit,
-    this.onDelete,
-    this.onMarkPaid,
+    this.onActionsPressed,
   });
 
   final _ClientPaymentDisplay payment;
   final String Function(DateTime) formatDate;
   final String Function(double) formatCurrency;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
-  final VoidCallback? onMarkPaid;
+  final VoidCallback? onActionsPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -1605,35 +1718,11 @@ class _PaymentRow extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
           ),
-          if (onEdit != null || onDelete != null || onMarkPaid != null)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_horiz),
-              onSelected: (value) {
-                if (value == 'edit') {
-                  onEdit?.call();
-            } else if (value == 'paid') {
-              onMarkPaid?.call();
-                } else if (value == 'delete') {
-                  onDelete?.call();
-                }
-              },
-              itemBuilder: (context) => [
-                if (onMarkPaid != null)
-                  const PopupMenuItem(
-                    value: 'paid',
-                    child: Text('Mark as paid'),
-                  ),
-                if (onEdit != null)
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Text('Edit'),
-                  ),
-                if (onDelete != null)
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text('Delete'),
-                  ),
-              ],
+          if (onActionsPressed != null)
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'Payment actions',
+              onPressed: onActionsPressed,
             ),
         ],
       ),
