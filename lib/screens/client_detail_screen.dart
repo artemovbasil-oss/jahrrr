@@ -5,6 +5,8 @@ import '../models/client.dart';
 import '../models/project.dart';
 import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
+import '../utils/client_color.dart';
+import '../widgets/client_color_picker.dart';
 import '../widgets/skeleton.dart';
 
 class ClientDetailScreen extends StatefulWidget {
@@ -480,182 +482,237 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
     var selectedFrequency = _client.retainerSettings?.frequency;
     DateTime? selectedDate = _client.retainerSettings?.nextPaymentDate;
+    var selectedColorHex = normalizeClientColorHex(_client.avatarColorHex);
+    var showColorError = false;
+    final contractLabel = _isRetainerClient(_client) ? 'Retainer' : 'Project';
 
-    final shouldUpdate = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit client'),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: nameController,
-                        decoration: const InputDecoration(labelText: 'Client name'),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Enter a client name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: amountController,
-                        decoration: InputDecoration(
-                          labelText: _isRetainerClient(_client)
-                              ? 'Retainer amount (\$)'
-                              : 'Planned budget (\$) (optional)',
-                        ),
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
-                        validator: (value) {
-                          final trimmed = value?.trim() ?? '';
-                          if (_isRetainerClient(_client)) {
-                            if (trimmed.isEmpty) {
-                              return 'Enter a retainer amount';
-                            }
-                            final parsed =
-                                double.tryParse(trimmed.replaceAll(',', '.'));
-                            if (parsed == null || parsed <= 0) {
-                              return 'Enter a valid amount';
-                            }
-                          } else if (trimmed.isNotEmpty) {
-                            final parsed =
-                                double.tryParse(trimmed.replaceAll(',', '.'));
-                            if (parsed == null || parsed < 0) {
-                              return 'Enter a valid budget';
-                            }
-                          }
-                          return null;
-                        },
-                      ),
-                      if (_isRetainerClient(_client)) ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          value: selectedFrequency,
-                          decoration:
-                              const InputDecoration(labelText: 'Payment frequency'),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'once_month',
-                              child: Text('Once a month'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'twice_month',
-                              child: Text('Twice a month'),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectedFrequency = value;
-                            });
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Select a payment frequency';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Next payment date'),
-                          subtitle: Text(
-                            selectedDate == null
-                                ? 'Select a date'
-                                : _formatDate(selectedDate!),
+    final shouldUpdate = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Edit client'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextFormField(
+                            controller: nameController,
+                            decoration: const InputDecoration(labelText: 'Client name'),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a client name';
+                              }
+                              return null;
+                            },
                           ),
-                          trailing: const Icon(Icons.calendar_today_outlined),
-                          onTap: () async {
-                            final now = DateTime.now();
-                            final picked = await showDatePicker(
-                              context: dialogContext,
-                              initialDate: selectedDate ?? now,
-                              firstDate: now,
-                              lastDate: DateTime(now.year + 5),
-                            );
-                            if (picked == null) {
+                          const SizedBox(height: 16),
+                          Text(
+                            'Contract type: $contractLabel',
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          ClientColorPicker(
+                            selectedColorHex: selectedColorHex,
+                            showError: showColorError,
+                            onColorSelected: (hex) {
+                              setModalState(() {
+                                selectedColorHex = normalizeClientColorHex(hex);
+                                showColorError = false;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: amountController,
+                            decoration: InputDecoration(
+                              labelText: _isRetainerClient(_client)
+                                  ? 'Retainer amount (\$)'
+                                  : 'Planned budget (\$) (optional)',
+                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              final trimmed = value?.trim() ?? '';
+                              if (_isRetainerClient(_client)) {
+                                if (trimmed.isEmpty) {
+                                  return 'Enter a retainer amount';
+                                }
+                                final parsed =
+                                    double.tryParse(trimmed.replaceAll(',', '.'));
+                                if (parsed == null || parsed <= 0) {
+                                  return 'Enter a valid amount';
+                                }
+                              } else if (trimmed.isNotEmpty) {
+                                final parsed =
+                                    double.tryParse(trimmed.replaceAll(',', '.'));
+                                if (parsed == null || parsed < 0) {
+                                  return 'Enter a valid budget';
+                                }
+                              }
+                              return null;
+                            },
+                          ),
+                          if (_isRetainerClient(_client)) ...[
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              value: selectedFrequency,
+                              decoration:
+                                  const InputDecoration(labelText: 'Payment frequency'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'once_month',
+                                  child: Text('Once a month'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'twice_month',
+                                  child: Text('Twice a month'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setModalState(() {
+                                  selectedFrequency = value;
+                                });
+                              },
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Select a payment frequency';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Next payment date'),
+                              subtitle: Text(
+                                selectedDate == null
+                                    ? 'Select a date'
+                                    : _formatDate(selectedDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: routeContext,
+                                  initialDate: selectedDate ?? now,
+                                  firstDate: now,
+                                  lastDate: DateTime(now.year + 5),
+                                );
+                                if (picked == null) {
+                                  return;
+                                }
+                                setModalState(() {
+                                  selectedDate = picked;
+                                });
+                              },
+                            ),
+                            if (selectedDate == null)
+                              Text(
+                                'Select a payment date',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.error,
+                                    ),
+                              ),
+                          ],
+                          const SizedBox(height: 20),
+                          const Divider(),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: contactController,
+                            decoration:
+                                const InputDecoration(labelText: 'Contact person'),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: phoneController,
+                            decoration: const InputDecoration(labelText: 'Phone'),
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: emailController,
+                            decoration: const InputDecoration(labelText: 'Email'),
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: telegramController,
+                            decoration: const InputDecoration(labelText: 'Telegram'),
+                            textInputAction: TextInputAction.done,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid = formKey.currentState?.validate() ?? false;
+                            final hasColor = selectedColorHex.trim().isNotEmpty;
+                            if (!hasColor) {
+                              setModalState(() {
+                                showColorError = true;
+                              });
                               return;
                             }
-                            setDialogState(() {
-                              selectedDate = picked;
-                            });
+                            if (_isRetainerClient(_client) && selectedDate == null) {
+                              setModalState(() {});
+                              return;
+                            }
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop(true);
                           },
+                          child: const Text('Save'),
                         ),
-                        if (selectedDate == null)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Select a payment date',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                            ),
-                          ),
-                      ],
-                      const SizedBox(height: 16),
-                      const Divider(),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: contactController,
-                        decoration:
-                            const InputDecoration(labelText: 'Contact person'),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: phoneController,
-                        decoration: const InputDecoration(labelText: 'Phone'),
-                        keyboardType: TextInputType.phone,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: emailController,
-                        decoration: const InputDecoration(labelText: 'Email'),
-                        keyboardType: TextInputType.emailAddress,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: telegramController,
-                        decoration: const InputDecoration(labelText: 'Telegram'),
                       ),
                     ],
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final isValid = formKey.currentState?.validate() ?? false;
-                    if (_isRetainerClient(_client) && selectedDate == null) {
-                      setDialogState(() {});
-                      return;
-                    }
-                    if (!isValid) {
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop(true);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
 
     if (shouldUpdate != true) {
+      return;
+    }
+    final isValid = formKey.currentState?.validate() ?? false;
+    final hasColor = selectedColorHex.trim().isNotEmpty;
+    if (!isValid || !hasColor) {
+      return;
+    }
+    if (_isRetainerClient(_client) && selectedDate == null) {
       return;
     }
 
@@ -687,7 +744,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       plannedBudget: _isRetainerClient(_client) ? null : parsedAmount,
       createdAt: _client.createdAt,
       updatedAt: now,
-      avatarColorHex: _client.avatarColorHex,
+      avatarColorHex: normalizeClientColorHex(selectedColorHex),
       retainerSettings: updatedSettings,
     );
     await widget.onUpdateClient(updatedClient);
@@ -854,124 +911,152 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Future<void> _editProject(Project project) async {
+    final formKey = GlobalKey<FormState>();
     final titleController = TextEditingController(text: project.title);
     final amountController =
         TextEditingController(text: project.amount.toStringAsFixed(0));
     var selectedStage = project.status;
     DateTime? selectedDeadline = project.deadlineDate;
-    var showErrors = false;
-
-    final shouldUpdate = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit project'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Project name',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountController,
-                      decoration: const InputDecoration(
-                        labelText: 'Project amount (\$)',
-                      ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: selectedStage.isEmpty ? null : selectedStage,
-                      decoration: const InputDecoration(
-                        labelText: 'Project stage',
-                      ),
-                      items: projectStageLabels.entries
-                          .map(
-                            (entry) => DropdownMenuItem(
-                              value: entry.key,
-                              child: Text(entry.value),
+    final shouldUpdate = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Edit project'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: titleController,
+                            decoration: const InputDecoration(
+                              labelText: 'Project name',
                             ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        setDialogState(() {
-                          selectedStage = value ?? selectedStage;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Deadline (optional)'),
-                      subtitle: Text(
-                        selectedDeadline == null
-                            ? 'Select a date'
-                            : _formatDate(selectedDeadline!),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a project name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: amountController,
+                            decoration: const InputDecoration(
+                              labelText: 'Project amount (\$)',
+                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a project amount';
+                              }
+                              final parsed =
+                                  double.tryParse(value.replaceAll(',', '.'));
+                              if (parsed == null || parsed <= 0) {
+                                return 'Enter a valid amount';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: selectedStage.isEmpty ? null : selectedStage,
+                            decoration: const InputDecoration(
+                              labelText: 'Project stage',
+                            ),
+                            items: projectStageLabels.entries
+                                .map(
+                                  (entry) => DropdownMenuItem(
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setModalState(() {
+                                selectedStage = value ?? selectedStage;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select a project stage';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Deadline (optional)'),
+                            subtitle: Text(
+                              selectedDeadline == null
+                                  ? 'Select a date'
+                                  : _formatDate(selectedDeadline!),
+                            ),
+                            trailing: const Icon(Icons.calendar_today_outlined),
+                            onTap: () async {
+                              final now = DateTime.now();
+                              final picked = await showDatePicker(
+                                context: routeContext,
+                                initialDate: selectedDeadline ?? now,
+                                firstDate: now,
+                                lastDate: DateTime(now.year + 5),
+                              );
+                              if (picked == null) {
+                                return;
+                              }
+                              setModalState(() {
+                                selectedDeadline = picked;
+                              });
+                            },
+                          ),
+                        ],
                       ),
-                      trailing: const Icon(Icons.calendar_today_outlined),
-                      onTap: () async {
-                        final now = DateTime.now();
-                        final picked = await showDatePicker(
-                          context: dialogContext,
-                          initialDate: selectedDeadline ?? now,
-                          firstDate: now,
-                          lastDate: DateTime(now.year + 5),
-                        );
-                        if (picked == null) {
-                          return;
-                        }
-                        setDialogState(() {
-                          selectedDeadline = picked;
-                        });
-                      },
                     ),
-                    if (showErrors)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Enter a name and amount',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(false),
+                          child: const Text('Cancel'),
                         ),
                       ),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid = formKey.currentState?.validate() ?? false;
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop(true);
+                          },
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final title = titleController.text.trim();
-                    final amount = double.tryParse(
-                      amountController.text.trim().replaceAll(',', '.'),
-                    );
-                    if (title.isEmpty || amount == null || amount <= 0) {
-                      setDialogState(() {
-                        showErrors = true;
-                      });
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop(true);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
 
     if (shouldUpdate != true) {
@@ -1031,179 +1116,206 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Future<void> _editPayment(ProjectPayment payment) async {
+    final formKey = GlobalKey<FormState>();
     final amountController =
         TextEditingController(text: payment.amount.toStringAsFixed(0));
     var selectedKind = payment.kind;
     var selectedStatus = payment.status;
     DateTime? selectedDueDate = payment.dueDate;
     DateTime? selectedPaidDate = payment.paidDate;
-    var showErrors = false;
-
-    final shouldUpdate = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit payment'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: amountController,
-                      decoration: const InputDecoration(
-                        labelText: 'Amount (\$)',
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    ),
-                    if (showErrors &&
-                        (double.tryParse(amountController.text.trim().replaceAll(',', '.')) ==
-                            null)) ...[
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Enter a valid amount',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: selectedKind,
-                      decoration: const InputDecoration(
-                        labelText: 'Kind',
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'deposit', child: Text('Deposit')),
-                        DropdownMenuItem(value: 'milestone', child: Text('Milestone')),
-                        DropdownMenuItem(value: 'final', child: Text('Final payment')),
-                        DropdownMenuItem(value: 'other', child: Text('Other')),
-                      ],
-                      onChanged: (value) {
-                        setDialogState(() {
-                          selectedKind = value ?? selectedKind;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: selectedStatus,
-                      decoration: const InputDecoration(
-                        labelText: 'Status',
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'planned', child: Text('Planned')),
-                        DropdownMenuItem(value: 'paid', child: Text('Paid')),
-                      ],
-                      onChanged: (value) {
-                        setDialogState(() {
-                          selectedStatus = value ?? selectedStatus;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Due date (optional)'),
-                      subtitle: Text(
-                        selectedDueDate == null
-                            ? 'Select a date'
-                            : _formatDate(selectedDueDate!),
-                      ),
-                      trailing: const Icon(Icons.calendar_today_outlined),
-                      onTap: () async {
-                        final now = DateTime.now();
-                        final picked = await showDatePicker(
-                          context: dialogContext,
-                          initialDate: selectedDueDate ?? now,
-                          firstDate: DateTime(now.year - 5),
-                          lastDate: DateTime(now.year + 5),
-                        );
-                        if (picked == null) {
-                          return;
-                        }
-                        setDialogState(() {
-                          selectedDueDate = picked;
-                        });
-                      },
-                    ),
-                    if (selectedStatus == 'paid') ...[
-                      const SizedBox(height: 12),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Paid date'),
-                        subtitle: Text(
-                          selectedPaidDate == null
-                              ? 'Select a date'
-                              : _formatDate(selectedPaidDate!),
-                        ),
-                        trailing: const Icon(Icons.calendar_today_outlined),
-                        onTap: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: dialogContext,
-                            initialDate: selectedPaidDate ?? now,
-                            firstDate: DateTime(now.year - 5),
-                            lastDate: DateTime(now.year + 5),
-                          );
-                          if (picked == null) {
-                            return;
-                          }
-                          setDialogState(() {
-                            selectedPaidDate = picked;
-                          });
-                        },
-                      ),
-                      if (showErrors && selectedPaidDate == null) ...[
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Select a paid date',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
+    final shouldUpdate = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        fullscreenDialog: true,
+        builder: (routeContext) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Edit payment'),
+                ),
+                body: SafeArea(
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: amountController,
+                            decoration: const InputDecoration(
+                              labelText: 'Payment amount (\$)',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            textInputAction: TextInputAction.next,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter a payment amount';
+                              }
+                              final parsed = double.tryParse(
+                                value.replaceAll(',', '.'),
+                              );
+                              if (parsed == null || parsed <= 0) {
+                                return 'Enter a valid amount';
+                              }
+                              return null;
+                            },
                           ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: selectedKind,
+                            decoration: const InputDecoration(
+                              labelText: 'Payment kind',
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: 'deposit', child: Text('Deposit')),
+                              DropdownMenuItem(
+                                value: 'milestone',
+                                child: Text('Milestone'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'final',
+                                child: Text('Final payment'),
+                              ),
+                              DropdownMenuItem(value: 'other', child: Text('Other')),
+                            ],
+                            onChanged: (value) {
+                              setModalState(() {
+                                selectedKind = value ?? selectedKind;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select a payment kind';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: selectedStatus,
+                            decoration: const InputDecoration(
+                              labelText: 'Status',
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: 'planned', child: Text('Planned')),
+                              DropdownMenuItem(value: 'paid', child: Text('Paid')),
+                            ],
+                            onChanged: (value) {
+                              setModalState(() {
+                                selectedStatus = value ?? selectedStatus;
+                                if (selectedStatus != 'paid') {
+                                  selectedPaidDate = null;
+                                }
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Due date (optional)'),
+                            subtitle: Text(
+                              selectedDueDate == null
+                                  ? 'Select a date'
+                                  : _formatDate(selectedDueDate!),
+                            ),
+                            trailing: const Icon(Icons.calendar_today_outlined),
+                            onTap: () async {
+                              final now = DateTime.now();
+                              final picked = await showDatePicker(
+                                context: routeContext,
+                                initialDate: selectedDueDate ?? now,
+                                firstDate: DateTime(now.year - 5),
+                                lastDate: DateTime(now.year + 5),
+                              );
+                              if (picked == null) {
+                                return;
+                              }
+                              setModalState(() {
+                                selectedDueDate = picked;
+                              });
+                            },
+                          ),
+                          if (selectedStatus == 'paid') ...[
+                            const SizedBox(height: 12),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Paid date'),
+                              subtitle: Text(
+                                selectedPaidDate == null
+                                    ? 'Select a date'
+                                    : _formatDate(selectedPaidDate!),
+                              ),
+                              trailing: const Icon(Icons.calendar_today_outlined),
+                              onTap: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: routeContext,
+                                  initialDate: selectedPaidDate ?? now,
+                                  firstDate: DateTime(now.year - 5),
+                                  lastDate: DateTime(now.year + 5),
+                                );
+                                if (picked == null) {
+                                  return;
+                                }
+                                setModalState(() {
+                                  selectedPaidDate = picked;
+                                });
+                              },
+                            ),
+                            if (selectedPaidDate == null)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Select a paid date',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Theme.of(context).colorScheme.error,
+                                      ),
+                                ),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                bottomNavigationBar: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(routeContext).pop(false),
+                          child: const Text('Cancel'),
                         ),
-                      ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            final isValid = formKey.currentState?.validate() ?? false;
+                            if (selectedStatus == 'paid' && selectedPaidDate == null) {
+                              setModalState(() {});
+                              return;
+                            }
+                            if (!isValid) {
+                              return;
+                            }
+                            Navigator.of(routeContext).pop(true);
+                          },
+                          child: const Text('Update'),
+                        ),
+                      ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final amount = double.tryParse(
-                      amountController.text.trim().replaceAll(',', '.'),
-                    );
-                    if (amount == null || amount <= 0) {
-                      setDialogState(() {
-                        showErrors = true;
-                      });
-                      return;
-                    }
-                    if (selectedStatus == 'paid' && selectedPaidDate == null) {
-                      setDialogState(() {
-                        showErrors = true;
-                      });
-                      return;
-                    }
-                    Navigator.of(dialogContext).pop(true);
-                  },
-                  child: const Text('Update'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              );
+            },
+          );
+        },
+      ),
     );
 
     if (shouldUpdate != true) {

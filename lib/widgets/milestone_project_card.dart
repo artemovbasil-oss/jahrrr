@@ -8,9 +8,6 @@ class MilestoneProjectCard extends StatelessWidget {
     required this.project,
     required this.clientName,
     required this.amountLabel,
-    required this.clientTagColor,
-    required this.stageTagColor,
-    required this.stageTextColor,
     required this.progressValue,
     required this.progressColor,
     this.onTap,
@@ -19,9 +16,6 @@ class MilestoneProjectCard extends StatelessWidget {
   final Project project;
   final String clientName;
   final String amountLabel;
-  final Color clientTagColor;
-  final Color stageTagColor;
-  final Color stageTextColor;
   final double progressValue;
   final Color progressColor;
   final VoidCallback? onTap;
@@ -72,40 +66,14 @@ class MilestoneProjectCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final maxStageWidth = constraints.maxWidth * 0.6;
-                  return Row(
-                    children: [
-                      Flexible(
-                        fit: FlexFit.loose,
-                        child: _ProjectTag(
-                          text: clientName,
-                          backgroundColor: clientTagColor,
-                          textColor: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const Spacer(),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minWidth: 104,
-                          maxWidth: maxStageWidth,
-                        ),
-                        child: _ProjectTag(
-                          text: projectStageLabels[project.status] ?? project.status,
-                          backgroundColor: stageTagColor,
-                          textColor: stageTextColor,
-                          textAlign: TextAlign.right,
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+              Text(
+                _subtitleLabel(project),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 10),
               ClipRRect(
@@ -122,44 +90,18 @@ class MilestoneProjectCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _ProjectTag extends StatelessWidget {
-  const _ProjectTag({
-    required this.text,
-    required this.backgroundColor,
-    required this.textColor,
-    this.textAlign = TextAlign.left,
-    this.alignment = Alignment.centerLeft,
-    this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-  });
+  String _subtitleLabel(Project project) {
+    final deadline = project.deadlineDate;
+    if (deadline == null) {
+      return clientName;
+    }
+    return '$clientName • Due ${_formatDate(deadline)}';
+  }
 
-  final String text;
-  final Color backgroundColor;
-  final Color textColor;
-  final TextAlign textAlign;
-  final AlignmentGeometry alignment;
-  final EdgeInsetsGeometry padding;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      alignment: alignment,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: textAlign,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-      ),
-    );
+  String _formatDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$month/$day';
   }
 }
