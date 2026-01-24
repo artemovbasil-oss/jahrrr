@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,7 +16,6 @@ class SupabaseRepository {
   SupabaseRepository(this._client);
 
   final SupabaseClient _client;
-  final Random _random = Random();
   bool _supportsAvatarColorColumn = true;
 
   User? get currentUser => _client.auth.currentUser;
@@ -575,9 +573,7 @@ class SupabaseRepository {
     }
     return raw.whereType<Map<String, dynamic>>().map((row) {
       final storedColor = row['color'] as String? ?? row['avatar_color'] as String?;
-      final normalizedColor = storedColor != null && storedColor.isNotEmpty
-          ? storedColor
-          : generateClientColorHex(_random);
+      final normalizedColor = normalizeClientColorHex(storedColor);
       return {
         ...row,
         'user_id': userId,
