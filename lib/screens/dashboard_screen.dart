@@ -176,7 +176,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       .contains(normalizedQuery),
             )
             .toList();
-    final showMilestonesViewAll = milestoneProjects.length >= 6;
+    final limitedMilestoneProjects = filteredMilestoneProjects.take(5).toList();
+    final showMilestonesViewAll = filteredMilestoneProjects.length > 5;
     final visibleClients = _selectedClientStatus == null
         ? _visibleClients()
         : _visibleClients()
@@ -211,9 +212,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .toList();
     final milestoneWidgets = filteredMilestoneProjects.isEmpty
         ? [_buildEmptyState('Add a project to track milestones.')]
-        : filteredMilestoneProjects
+        : limitedMilestoneProjects
             .map(
-                  (project) => Padding(
+              (project) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: MilestoneProjectCard(
                   project: project,
@@ -1639,6 +1640,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? null
         : double.tryParse(plannedBudgetValue.replaceAll(',', '.'));
     final now = DateTime.now();
+    final normalizedColor = normalizeClientColorHex(_selectedClientColorHex);
+    debugPrint(
+      'Client color update (before): client=${client.id} old=${client.avatarColorHex}',
+    );
+    debugPrint(
+      'Client color update (payload): client=${client.id} color=$normalizedColor',
+    );
     final retainerSettings = _isRetainerClient(client)
         ? RetainerSettings(
             amount: plannedBudget ?? 0,
@@ -1660,7 +1668,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       plannedBudget: _isRetainerClient(client) ? null : plannedBudget,
       createdAt: client.createdAt,
       updatedAt: now,
-      avatarColorHex: normalizeClientColorHex(_selectedClientColorHex),
+      avatarColorHex: normalizedColor,
       retainerSettings: retainerSettings,
     );
     await _updateClient(updatedClient);
@@ -2589,6 +2597,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     });
     await _persistData();
+    final refreshedClient = _clientById(updatedClient.id);
+    final refreshedColor = refreshedClient?.avatarColorHex ?? 'missing';
+    debugPrint(
+      'Client color update (after): client=${updatedClient.id} color=$refreshedColor',
+    );
   }
 
   String _clientTypeLabel(Client client) {
