@@ -572,12 +572,12 @@ class SupabaseRepository {
       return [];
     }
     return raw.whereType<Map<String, dynamic>>().map((row) {
-      final storedColor = row['color'] as String? ?? row['avatar_color'] as String?;
+      final storedColor = row['avatar_color'] as String? ?? row['color'] as String?;
       final normalizedColor = normalizeClientColorHex(storedColor);
       return {
         ...row,
         'user_id': userId,
-        'color': normalizedColor,
+        'avatar_color': normalizedColor,
       };
     }).toList();
   }
@@ -597,7 +597,10 @@ class SupabaseRepository {
       'updated_at': client.updatedAt.toIso8601String(),
     };
     if (_supportsAvatarColorColumn) {
-      payload['color'] = client.avatarColorHex;
+      payload['avatar_color'] = client.avatarColorHex;
+      debugPrint(
+        'Client color update (repository payload): client=${client.id} avatar_color=${client.avatarColorHex}',
+      );
     }
     return payload;
   }
@@ -707,7 +710,7 @@ class SupabaseRepository {
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
-      avatarColorHex: row['color'] as String? ?? row['avatar_color'] as String? ?? '',
+      avatarColorHex: row['avatar_color'] as String? ?? row['color'] as String? ?? '',
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
@@ -786,7 +789,7 @@ class SupabaseRepository {
         .map(
           (row) => {
             for (final entry in row.entries)
-              if (entry.key != 'color') entry.key: entry.value,
+              if (entry.key != 'avatar_color') entry.key: entry.value,
           },
         )
         .toList();
