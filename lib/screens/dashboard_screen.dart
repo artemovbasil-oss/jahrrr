@@ -247,7 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Flexible(
+                        Expanded(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -274,32 +274,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color:
-                                    _clientColorForId(project.clientId).withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                projectStageLabels[project.status] ?? project.status,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                              ),
-                            ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _clientColorForId(project.clientId).withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            projectStageLabels[project.status] ?? project.status,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
                           ),
                         ),
                       ],
