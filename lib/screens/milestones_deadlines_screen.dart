@@ -10,7 +10,6 @@ class MilestonesDeadlinesScreen extends StatefulWidget {
     super.key,
     required this.projects,
     required this.clientNameForId,
-    required this.clientColorForId,
     required this.formatCurrency,
     required this.stageProgress,
     required this.stageColor,
@@ -19,7 +18,6 @@ class MilestonesDeadlinesScreen extends StatefulWidget {
 
   final List<Project> projects;
   final String Function(String clientId) clientNameForId;
-  final Color Function(String clientId) clientColorForId;
   final String Function(double amount) formatCurrency;
   final double Function(String stage) stageProgress;
   final Color Function(String stage) stageColor;
@@ -68,13 +66,6 @@ class _MilestonesDeadlinesScreenState extends State<MilestonesDeadlinesScreen> {
                     project: project,
                     clientName: widget.clientNameForId(project.clientId),
                     amountLabel: widget.formatCurrency(project.amount),
-                    clientTagColor:
-                        theme.colorScheme.surfaceVariant.withOpacity(0.6),
-                    stageTagColor: widget.clientColorForId(project.clientId)
-                        .withOpacity(theme.brightness == Brightness.dark ? 0.28 : 0.18),
-                    stageTextColor: theme.brightness == Brightness.dark
-                        ? theme.colorScheme.onSurface
-                        : theme.colorScheme.onSurfaceVariant,
                     progressValue: widget.stageProgress(project.status),
                     progressColor: widget.stageColor(project.status),
                     onTap: () => widget.onProjectTap(project),
