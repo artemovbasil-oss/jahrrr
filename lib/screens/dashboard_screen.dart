@@ -708,7 +708,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
       if (!mounted) {
-        return;
+        return false;
       }
       setState(() {
         _clients
