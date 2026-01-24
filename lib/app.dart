@@ -27,25 +27,54 @@ ThemeData buildJahrrrTheme() {
     outline: slate,
   );
 
-  return ThemeData(
+  final baseTheme = ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: cream,
     fontFamily: 'Inter',
+  );
+
+  return baseTheme.copyWith(
+    scaffoldBackgroundColor: cream,
     appBarTheme: const AppBarTheme(
       elevation: 0,
       centerTitle: false,
       backgroundColor: cream,
       foregroundColor: charcoal,
     ),
-    cardTheme: const CardThemeData(
-      color: Colors.white,
-      elevation: 0,
-      surfaceTintColor: Colors.white,
-      shape: RoundedRectangleBorder(
+    cardTheme: CardThemeData(
+      color: colorScheme.surface,
+      elevation: 1,
+      shadowColor: Colors.black.withOpacity(0.04),
+      surfaceTintColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(24)),
       ),
     ),
+    chipTheme: baseTheme.chipTheme.copyWith(
+      backgroundColor: colorScheme.surfaceVariant.withOpacity(0.7),
+      selectedColor: colorScheme.primary.withOpacity(0.12),
+      labelStyle: baseTheme.textTheme.labelSmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: colorScheme.onSurfaceVariant,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+      side: BorderSide(color: colorScheme.outline.withOpacity(0.25)),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: colorScheme.surface,
+      modalBackgroundColor: colorScheme.surface,
+      surfaceTintColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      dragHandleColor: colorScheme.surfaceVariant,
+    ),
+    dividerTheme: DividerThemeData(
+      color: colorScheme.outline.withOpacity(0.3),
+      thickness: 1,
+      space: 1,
+    ),
+    iconTheme: IconThemeData(color: colorScheme.onSurfaceVariant),
   );
 }
 
@@ -72,25 +101,54 @@ ThemeData buildJahrrrDarkTheme() {
     outline: Color(0xFF3C4757),
   );
 
-  return ThemeData(
+  final baseTheme = ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: midnight,
     fontFamily: 'Inter',
+  );
+
+  return baseTheme.copyWith(
     appBarTheme: const AppBarTheme(
       elevation: 0,
       centerTitle: false,
       backgroundColor: midnight,
       foregroundColor: Colors.white,
     ),
-    cardTheme: const CardThemeData(
-      color: Color(0xFF141A28),
-      elevation: 0,
-      surfaceTintColor: Color(0xFF141A28),
-      shape: RoundedRectangleBorder(
+    cardTheme: CardThemeData(
+      color: colorScheme.surface,
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.6),
+      surfaceTintColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(24)),
       ),
     ),
+    chipTheme: baseTheme.chipTheme.copyWith(
+      backgroundColor: colorScheme.surfaceVariant.withOpacity(0.85),
+      selectedColor: colorScheme.primary.withOpacity(0.22),
+      labelStyle: baseTheme.textTheme.labelSmall?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: colorScheme.onSurface,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+      side: BorderSide(color: colorScheme.outline.withOpacity(0.6)),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: colorScheme.surface,
+      modalBackgroundColor: colorScheme.surface,
+      surfaceTintColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      dragHandleColor: colorScheme.outline.withOpacity(0.6),
+    ),
+    dividerTheme: DividerThemeData(
+      color: colorScheme.outline.withOpacity(0.6),
+      thickness: 1,
+      space: 1,
+    ),
+    iconTheme: IconThemeData(color: colorScheme.onSurfaceVariant),
   );
 }
 
