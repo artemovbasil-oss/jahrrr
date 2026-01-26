@@ -7,6 +7,7 @@ import '../models/client.dart';
 import '../models/project.dart';
 import '../models/project_payment.dart';
 import '../models/retainer_settings.dart';
+import '../utils/app_snack.dart';
 import '../utils/client_color.dart';
 import '../widgets/client_color_picker.dart';
 import '../widgets/skeleton.dart';
@@ -846,9 +847,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Client duplicated')),
-    );
+    AppSnack.showSuccess(context, 'Client duplicated.');
   }
 
   Future<void> _duplicateProject(Project project) async {
@@ -1652,9 +1651,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Copied $value')),
-    );
+    AppSnack.showInfo(context, 'Copied $value');
   }
 }
 
