@@ -280,7 +280,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             keyboardType: TextInputType.number,
                             enabled: !_isVerifying,
                             textInputAction: TextInputAction.done,
-                            inputFormatters: const [
+                            inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                               LengthLimitingTextInputFormatter(6),
                             ],
