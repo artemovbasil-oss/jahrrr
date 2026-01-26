@@ -14,6 +14,7 @@ class Client {
     this.phone,
     this.email,
     this.telegram,
+    this.notes,
     this.plannedBudget,
     this.retainerSettings,
   });
@@ -28,6 +29,7 @@ class Client {
   final String? phone;
   final String? email;
   final String? telegram;
+  final String? notes;
   final double? plannedBudget;
   final RetainerSettings? retainerSettings;
 
@@ -60,6 +62,7 @@ class Client {
       phone: json['phone'] as String?,
       email: json['email'] as String?,
       telegram: json['telegram'] as String?,
+      notes: json['notes'] as String?,
       plannedBudget:
           (json['planned_budget'] as num?)?.toDouble() ??
           (json['plannedBudget'] as num?)?.toDouble() ??
@@ -86,6 +89,7 @@ class Client {
       'phone': phone,
       'email': email,
       'telegram': telegram,
+      'notes': notes,
       'planned_budget': plannedBudget,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),

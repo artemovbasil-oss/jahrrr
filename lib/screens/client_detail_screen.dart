@@ -1,5 +1,7 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/client.dart';
 import '../models/project.dart';
@@ -89,12 +91,15 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final normalizedNow = DateTime(now.year, now.month, now.day);
     final computedPayments = _buildClientPayments(normalizedNow);
     final upcomingPayments =
-        computedPayments.where((payment) => payment.date.isAfter(normalizedNow)).toList();
+        computedPayments.where((payment) => !payment.date.isBefore(normalizedNow)).toList();
     final pastPayments =
-        computedPayments.where((payment) => !payment.date.isAfter(normalizedNow)).toList();
-    final summaryParts = _buildSummaryChips();
+        computedPayments.where((payment) => payment.date.isBefore(normalizedNow)).toList();
     final visibleProjects = _projects.toList();
     final isLoading = widget.isLoading;
+    final contactPills = _buildContactPills();
+    final notesValue = _client.notes?.trim() ?? '';
+    final hasContactSection = (_client.contactPerson?.trim().isNotEmpty ?? false) ||
+        contactPills.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -110,8 +115,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _InfoCard(
+          _ClientDetailsPlate(
             title: 'Client details',
+            accentColor: resolveClientColor(_client),
             children: isLoading
                 ? _buildLoadingDetails()
                 : [
@@ -121,37 +127,33 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       value: _isRetainerClient(_client) ? 'Retainer' : 'Project',
                     ),
                     if (_isRetainerClient(_client))
-                      _InfoRow(
-                        label: 'Retainer amount',
-                        value: _formatCurrency(_client.retainerSettings?.amount ?? 0),
-                      ),
+                      _InfoRow(label: 'Salary', value: _buildRetainerSalaryLabel()),
                     if (!_isRetainerClient(_client))
-                      _InfoRow(
-                        label: 'Planned budget',
-                        value: _formatCurrency(_client.plannedBudget ?? 0),
+                      _InfoRow(label: 'Budget', value: _buildBudgetLabel()),
+                    if (hasContactSection) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Contact',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
-                    if (summaryParts.isNotEmpty)
-                      _InfoChipsRow(label: 'Summary', chips: summaryParts),
-                    if (_client.contactPerson != null && _client.contactPerson!.isNotEmpty)
-                      _InfoRow(label: 'Contact', value: _client.contactPerson!),
-                    if (_client.phone != null && _client.phone!.isNotEmpty)
-                      _InfoLinkRow(
-                        label: 'Phone',
-                        value: _client.phone!,
-                        onTap: () => _copyToClipboard(_client.phone!),
-                      ),
-                    if (_client.email != null && _client.email!.isNotEmpty)
-                      _InfoLinkRow(
-                        label: 'Email',
-                        value: _client.email!,
-                        onTap: () => _copyToClipboard(_client.email!),
-                      ),
-                    if (_client.telegram != null && _client.telegram!.isNotEmpty)
-                      _InfoLinkRow(
-                        label: 'Telegram',
-                        value: _client.telegram!,
-                        onTap: () => _copyToClipboard(_client.telegram!),
-                      ),
+                      if (_client.contactPerson != null &&
+                          _client.contactPerson!.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, bottom: 8),
+                          child: Text(
+                            _client.contactPerson!,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                      if (contactPills.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: contactPills,
+                        ),
+                    ],
                   ],
           ),
           const SizedBox(height: 20),
@@ -222,6 +224,20 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         )
                         .toList(),
           ),
+          if (notesValue.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _InfoCard(
+              title: 'Notes',
+              children: [
+                SelectableText.rich(
+                  TextSpan(
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    children: _linkifyNotes(notesValue, Theme.of(context)),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -475,6 +491,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final phoneController = TextEditingController(text: _client.phone ?? '');
     final emailController = TextEditingController(text: _client.email ?? '');
     final telegramController = TextEditingController(text: _client.telegram ?? '');
+    final notesController = TextEditingController(text: _client.notes ?? '');
     final amountController = TextEditingController(
       text: _isRetainerClient(_client)
           ? (_client.retainerSettings?.amount ?? 0).toStringAsFixed(0)
@@ -655,6 +672,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                             decoration: const InputDecoration(labelText: 'Telegram'),
                             textInputAction: TextInputAction.done,
                           ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: notesController,
+                            decoration: const InputDecoration(labelText: 'Notes'),
+                            maxLines: 4,
+                            textInputAction: TextInputAction.newline,
+                          ),
                         ],
                       ),
                     ),
@@ -741,6 +765,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       email: emailController.text.trim().isEmpty ? null : emailController.text.trim(),
       telegram:
           telegramController.text.trim().isEmpty ? null : telegramController.text.trim(),
+      notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
       plannedBudget: _isRetainerClient(_client) ? null : parsedAmount,
       createdAt: _client.createdAt,
       updatedAt: now,
@@ -1373,6 +1398,131 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     return '\$$prefix$formatted';
   }
 
+  String _buildBudgetLabel() {
+    if (_isRetainerClient(_client)) {
+      return '';
+    }
+    final planned = _client.plannedBudget ?? 0;
+    final actual = _projects
+        .where((project) => project.clientId == _client.id)
+        .fold<double>(0, (sum, project) => sum + project.amount);
+    if (planned > 0 && actual > 0 && planned != actual) {
+      return '${_formatCurrency(planned)} / ${_formatCurrency(actual)}';
+    }
+    if (actual > 0) {
+      return _formatCurrency(actual);
+    }
+    return _formatCurrency(planned);
+  }
+
+  String _buildRetainerSalaryLabel() {
+    if (!_isRetainerClient(_client)) {
+      return '';
+    }
+    final settings = _client.retainerSettings;
+    final amount = settings?.amount ?? 0;
+    final frequencyLabel =
+        settings?.frequency == 'twice_month' ? '2x / month' : '1x / month';
+    final actual =
+        _payments.fold<double>(0, (sum, payment) => sum + payment.amount);
+    if (actual > 0 && actual != amount) {
+      return '${_formatCurrency(amount)} / ${_formatCurrency(actual)} $frequencyLabel';
+    }
+    return '${_formatCurrency(amount)} $frequencyLabel';
+  }
+
+  List<Widget> _buildContactPills() {
+    final pills = <Widget>[];
+    final theme = Theme.of(context);
+
+    void addPill({
+      required IconData icon,
+      required String value,
+      required Uri? uri,
+    }) {
+      pills.add(
+        ActionChip(
+          avatar: Icon(icon, size: 18, color: theme.colorScheme.primary),
+          label: Text(value),
+          onPressed: () => _handleContactTap(value, uri),
+        ),
+      );
+    }
+
+    final phone = _client.phone?.trim() ?? '';
+    if (phone.isNotEmpty) {
+      addPill(
+        icon: Icons.phone_outlined,
+        value: phone,
+        uri: Uri(scheme: 'tel', path: phone),
+      );
+    }
+    final email = _client.email?.trim() ?? '';
+    if (email.isNotEmpty) {
+      addPill(
+        icon: Icons.email_outlined,
+        value: email,
+        uri: Uri(scheme: 'mailto', path: email),
+      );
+    }
+    final telegram = _client.telegram?.trim() ?? '';
+    if (telegram.isNotEmpty) {
+      final handle = telegram.startsWith('@') ? telegram.substring(1) : telegram;
+      addPill(
+        icon: Icons.send_outlined,
+        value: telegram,
+        uri: Uri.parse('https://t.me/$handle'),
+      );
+    }
+
+    return pills;
+  }
+
+  Future<void> _handleContactTap(String value, Uri? uri) async {
+    await _copyToClipboard(value);
+    if (uri == null) {
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  List<TextSpan> _linkifyNotes(String text, ThemeData theme) {
+    final spans = <TextSpan>[];
+    final regex = RegExp(r'(https?:\/\/[^\s]+)');
+    var currentIndex = 0;
+    final linkStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.primary,
+      decoration: TextDecoration.underline,
+    );
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > currentIndex) {
+        spans.add(TextSpan(text: text.substring(currentIndex, match.start)));
+      }
+      final url = match.group(0) ?? '';
+      if (url.isNotEmpty) {
+        spans.add(
+          TextSpan(
+            text: url,
+            style: linkStyle,
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                final uri = Uri.tryParse(url);
+                if (uri != null) {
+                  launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+          ),
+        );
+      }
+      currentIndex = match.end;
+    }
+    if (currentIndex < text.length) {
+      spans.add(TextSpan(text: text.substring(currentIndex)));
+    }
+    return spans;
+  }
+
   bool _isRetainerClient(Client client) {
     return client.type == 'retainer';
   }
@@ -1497,21 +1647,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         );
   }
 
-  List<String> _buildSummaryChips() {
-    final chips = <String>[];
-    chips.add(_isRetainerClient(_client) ? 'Retainer' : 'Project');
-    if (_isRetainerClient(_client)) {
-      final settings = _client.retainerSettings;
-      if (settings != null) {
-        chips.add(
-          settings.frequency == 'twice_month' ? 'Twice a month' : 'Once a month',
-        );
-        chips.add('Next: ${_formatDate(settings.nextPaymentDate)}');
-      }
-    }
-    return chips;
-  }
-
   Future<void> _copyToClipboard(String value) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) {
@@ -1539,6 +1674,56 @@ class _ClientPaymentDisplay {
   final String subtitle;
   final String status;
   final ProjectPayment? sourcePayment;
+}
+
+class _ClientDetailsPlate extends StatelessWidget {
+  const _ClientDetailsPlate({
+    required this.title,
+    required this.accentColor,
+    required this.children,
+  });
+
+  final String title;
+  final Color accentColor;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            accentColor.withOpacity(0.18),
+            accentColor.withOpacity(0.08),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
 }
 
 class _InfoCard extends StatelessWidget {
@@ -1605,107 +1790,6 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoChipsRow extends StatelessWidget {
-  const _InfoChipsRow({required this.label, required this.chips});
-
-  final String label;
-  final List<String> chips;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ChipTheme(
-                data: ChipTheme.of(context).copyWith(
-                  labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                ),
-                child: Row(
-                  children: chips
-                      .map(
-                        (chip) => Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: Chip(label: Text(chip)),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoLinkRow extends StatelessWidget {
-  const _InfoLinkRow({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ),
-          Expanded(
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  value,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ),
             ),
           ),
         ],
