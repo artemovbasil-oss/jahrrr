@@ -80,6 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _contactPhoneController = TextEditingController();
   final TextEditingController _contactEmailController = TextEditingController();
   final TextEditingController _contactTelegramController = TextEditingController();
+  final TextEditingController _clientNotesController = TextEditingController();
   final TextEditingController _projectNameController = TextEditingController();
   final TextEditingController _projectAmountController = TextEditingController();
   final TextEditingController _paymentAmountController = TextEditingController();
@@ -130,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _contactPhoneController.dispose();
     _contactEmailController.dispose();
     _contactTelegramController.dispose();
+    _clientNotesController.dispose();
     _projectNameController.dispose();
     _projectAmountController.dispose();
     _paymentAmountController.dispose();
@@ -146,6 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now();
     final today = _normalizeDate(now);
     final range7End = today.add(const Duration(days: 6));
+    final upcomingWindowEnd = today.add(const Duration(days: 7));
     final range30End = today.add(const Duration(days: 29));
     final activeProjects =
         _isLoading ? const <Project>[] : _activeProjects();
@@ -162,10 +165,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final budgetInProgress = retainerNext30 + projectBudgetSum;
     final deadlinesThisWeek =
         _isLoading ? 0 : _deadlineProjects(today, range7End).length;
+    final upcomingPaymentEntries =
+        _isLoading ? const <_UpcomingPaymentEntry>[] : _buildUpcomingPayments(today, upcomingWindowEnd);
     final upcomingPayments = _isLoading
         ? 0.0
-        : _projectPaymentsPaidThisWeek(today, range7End) +
-            _retainerScheduledSum(today, range7End);
+        : upcomingPaymentEntries.fold<double>(0, (sum, entry) => sum + entry.amount);
     final clientStatuses = projectStageLabels.entries.toList();
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredMilestoneProjects = normalizedQuery.isEmpty
@@ -203,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             .toList();
     final upcomingPaymentItems = _isLoading
         ? const <_PaymentPillItem>[]
-        : _buildUpcomingPayments(today, range7End);
+        : _paymentPillItemsFromEntries(upcomingPaymentEntries);
     final selectedChipColor = theme.colorScheme.primaryContainer;
     final selectedChipLabelColor = contrastColorFor(selectedChipColor);
     final filteredPayments = normalizedQuery.isEmpty
@@ -267,7 +271,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           if (client == null) {
                             return;
                           }
-                          _openClientDetails(client, openRetainerSettings: true);
+                          _openClientDetails(client);
                         }
                       },
                     ),
@@ -402,7 +406,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       tag: 'This week',
                       accentColor: const Color(0xFF0F0E0E),
                       gradient: const [Colors.white, Color(0xFFC0C0C0)],
-                      onTap: () => _showUpcomingPaymentsSheet(today, range7End),
+                      onTap: () =>
+                          _showUpcomingPaymentsSheet(today, upcomingWindowEnd),
                     ),
                   ],
           ),
@@ -1163,6 +1168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _contactPhoneController.clear();
     _contactEmailController.clear();
     _contactTelegramController.clear();
+    _clientNotesController.clear();
     _selectedContractType = null;
     _selectedRetainerFrequency = null;
     _selectedRetainerPayDate = null;
@@ -1380,6 +1386,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             textInputAction: TextInputAction.done,
                           ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _clientNotesController,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes',
+                            ),
+                            maxLines: 4,
+                            textInputAction: TextInputAction.newline,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _clientNotesController,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes',
+                            ),
+                            maxLines: 4,
+                            textInputAction: TextInputAction.newline,
+                          ),
                         ],
                       ),
                     ),
@@ -1443,6 +1467,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _contactPhoneController.text = client.phone ?? '';
     _contactEmailController.text = client.email ?? '';
     _contactTelegramController.text = client.telegram ?? '';
+    _clientNotesController.text = client.notes ?? '';
     _selectedContractType = client.type;
     _selectedRetainerFrequency = client.retainerSettings?.frequency;
     _selectedRetainerPayDate = client.retainerSettings?.nextPaymentDate;
@@ -1695,6 +1720,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final contactPhone = _contactPhoneController.text.trim();
     final contactEmail = _contactEmailController.text.trim();
     final contactTelegram = _contactTelegramController.text.trim();
+    final notesValue = _clientNotesController.text.trim();
     final plannedBudgetValue = _plannedBudgetController.text.trim();
     final plannedBudget = plannedBudgetValue.isEmpty
         ? null
@@ -1725,6 +1751,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       phone: contactPhone.isEmpty ? null : contactPhone,
       email: contactEmail.isEmpty ? null : contactEmail,
       telegram: contactTelegram.isEmpty ? null : contactTelegram,
+      notes: notesValue.isEmpty ? null : notesValue,
       plannedBudget: _isRetainerClient(client) ? null : plannedBudget,
       createdAt: client.createdAt,
       updatedAt: now,
@@ -1830,6 +1857,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       phone: client.phone,
       email: client.email,
       telegram: client.telegram,
+      notes: copyWithAllSettings ? client.notes : null,
       plannedBudget: client.plannedBudget,
       createdAt: now,
       updatedAt: now,
@@ -1889,6 +1917,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final contactPhone = _contactPhoneController.text.trim();
     final contactEmail = _contactEmailController.text.trim();
     final contactTelegram = _contactTelegramController.text.trim();
+    final notesValue = _clientNotesController.text.trim();
     final plannedBudgetValue = _plannedBudgetController.text.trim();
     final plannedBudget = plannedBudgetValue.isEmpty
         ? null
@@ -1915,6 +1944,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       phone: contactPhone.isEmpty ? null : contactPhone,
       email: contactEmail.isEmpty ? null : contactEmail,
       telegram: contactTelegram.isEmpty ? null : contactTelegram,
+      notes: notesValue.isEmpty ? null : notesValue,
       plannedBudget: contractType == 'project' ? plannedBudget : null,
       createdAt: now,
       updatedAt: now,
@@ -2824,6 +2854,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         phone: client.phone,
         email: client.email,
         telegram: client.telegram,
+        notes: client.notes,
         plannedBudget: client.plannedBudget,
         createdAt: client.createdAt,
         updatedAt: now,
@@ -2858,23 +2889,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return projectAmountSum == 0 ? (client.plannedBudget ?? 0) : projectAmountSum;
   }
 
-  List<_PaymentPillItem> _buildUpcomingPayments(DateTime start, DateTime end) {
-    final upcoming = <_PaymentPillItem>[];
+  List<_UpcomingPaymentEntry> _buildUpcomingPayments(DateTime start, DateTime end) {
+    final upcoming = <_UpcomingPaymentEntry>[];
+    final projectKindCounts = <String, int>{};
+    var retainerCount = 0;
 
     for (final entry in _retainerUpcomingPayments(start, end)) {
-      final client = _clients.cast<Client?>().firstWhere(
-            (item) => item?.name == entry.client,
-            orElse: () => null,
-          );
-      if (client == null) {
-        continue;
-      }
+      retainerCount += 1;
       upcoming.add(
-        _PaymentPillItem(
-          clientId: client.id,
-          clientName: entry.client,
+        _UpcomingPaymentEntry(
+          clientId: entry.clientId,
+          clientName: entry.clientName,
           amount: entry.amount,
           date: entry.date,
+          createdAt:
+              _clientById(entry.clientId)?.retainerSettings?.updatedAt ?? entry.date,
           tagLabel: 'salary',
           type: _PaymentPillType.retainer,
         ),
@@ -2882,48 +2911,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     for (final payment in _projectPayments) {
-      if (payment.status != 'paid' || payment.paidDate == null) {
+      if (payment.dueDate == null) {
         continue;
       }
-      if (!_isWithinRange(payment.paidDate!, start, end)) {
+      if (!_isWithinRange(payment.dueDate!, start, end)) {
         continue;
       }
       final project = _projectById(payment.projectId);
       if (project == null) {
         continue;
       }
-      if (project.status != 'deposit_received' &&
-          project.status != 'payment_received_in_full') {
-        continue;
-      }
       final client = _clientById(project.clientId);
       if (client == null) {
         continue;
       }
+      final kindKey = payment.kind;
+      projectKindCounts[kindKey] = (projectKindCounts[kindKey] ?? 0) + 1;
       upcoming.add(
-        _PaymentPillItem(
+        _UpcomingPaymentEntry(
           clientId: client.id,
           clientName: client.name,
           amount: payment.amount,
-          date: payment.paidDate!,
+          date: payment.dueDate!,
+          createdAt: payment.createdAt,
           tagLabel: 'project',
           type: _PaymentPillType.project,
           projectId: project.id,
+          sourcePayment: payment,
         ),
       );
     }
+
+    debugPrint(
+      'Upcoming payments window ${_formatDate(start)}-${_formatDate(end)} '
+      'project_counts=$projectKindCounts retainers=$retainerCount total=${upcoming.length}',
+    );
 
     upcoming.sort((a, b) {
       final dateCompare = a.date.compareTo(b.date);
       if (dateCompare != 0) {
         return dateCompare;
       }
-      if (a.type == b.type) {
-        return 0;
-      }
-      return a.type == _PaymentPillType.project ? -1 : 1;
+      return a.createdAt.compareTo(b.createdAt);
     });
     return upcoming;
+  }
+
+  List<_PaymentPillItem> _paymentPillItemsFromEntries(
+    List<_UpcomingPaymentEntry> entries,
+  ) {
+    return entries
+        .map(
+          (entry) => _PaymentPillItem(
+            clientId: entry.clientId,
+            clientName: entry.clientName,
+            amount: entry.amount,
+            date: entry.date,
+            tagLabel: entry.tagLabel,
+            type: entry.type,
+            projectId: entry.projectId,
+          ),
+        )
+        .toList();
   }
 
   Iterable<_UpcomingPayment> _retainerUpcomingPayments(DateTime start, DateTime end) sync* {
@@ -2938,7 +2987,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final scheduledDates = _scheduledRetainerDates(settings, start, end);
       for (final date in scheduledDates) {
         yield _UpcomingPayment(
-          client: client.name,
+          clientId: client.id,
+          clientName: client.name,
           amount: settings.amount,
           date: date,
           kind: 'Retainer',
@@ -3072,27 +3122,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
     return total;
-  }
-
-  double _projectPaymentsPaidThisWeek(DateTime start, DateTime end) {
-    return _projectPayments.where((payment) {
-      if (payment.status != 'paid' || payment.paidDate == null) {
-        return false;
-      }
-      if (!_isWithinRange(payment.paidDate!, start, end)) {
-        return false;
-      }
-      final project = _projectById(payment.projectId);
-      if (project == null) {
-        return false;
-      }
-      if (project.status != 'deposit_received' &&
-          project.status != 'payment_received_in_full') {
-        return false;
-      }
-      final client = _clientById(project.clientId);
-      return client != null;
-    }).fold<double>(0, (sum, payment) => sum + payment.amount);
   }
 
   List<DateTime> _scheduledRetainerDates(
@@ -3244,7 +3273,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       items: [
         ...retainerEntries.map(
           (entry) => _SheetItem(
-            title: entry.client,
+            title: entry.clientName,
             subtitle: 'Retainer • ${_formatDate(entry.date)}',
             trailing: _formatCurrency(entry.amount),
           ),
@@ -3294,49 +3323,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showUpcomingPaymentsSheet(DateTime start, DateTime end) {
-    final retainerEntries = _retainerUpcomingPayments(start, end).toList();
-    final paidProjectPayments = _projectPayments.where((payment) {
-      if (payment.status != 'paid' || payment.paidDate == null) {
-        return false;
-      }
-      if (!_isWithinRange(payment.paidDate!, start, end)) {
-        return false;
-      }
-      final project = _projectById(payment.projectId);
-      if (project == null) {
-        return false;
-      }
-      if (project.status != 'deposit_received' &&
-          project.status != 'payment_received_in_full') {
-        return false;
-      }
-      final client = _clientById(project.clientId);
-      return client != null;
-    }).toList();
+    final upcomingEntries = _buildUpcomingPayments(start, end);
 
     _showListSheet(
       title: 'Upcoming payments',
-      items: [
-        ...paidProjectPayments.map(
-          (payment) {
-            final project = _projectById(payment.projectId);
-            final clientName = project == null ? 'Unknown client' : _clientNameForId(project.clientId);
-            return _SheetItem(
-              title: project?.title ?? 'Unknown project',
-              subtitle: '$clientName • ${_paymentKindLabels[payment.kind] ?? payment.kind}',
-              trailing: _formatCurrency(payment.amount),
-            );
-          },
-        ),
-        if (paidProjectPayments.isNotEmpty) const _SheetDivider(),
-        ...retainerEntries.map(
-          (entry) => _SheetItem(
-            title: entry.client,
-            subtitle: 'Retainer • ${_formatDate(entry.date)}',
-            trailing: _formatCurrency(entry.amount),
-          ),
-        ),
-      ],
+      items: upcomingEntries
+          .map(
+            (entry) {
+              final client = _clientById(entry.clientId);
+              final project = entry.projectId == null
+                  ? null
+                  : _projectById(entry.projectId!);
+              final subtitle = entry.type == _PaymentPillType.project
+                  ? '${entry.clientName} • ${_paymentKindLabels[entry.sourcePayment?.kind] ?? entry.sourcePayment?.kind ?? 'Payment'} • ${_formatDate(entry.date)}'
+                  : 'Retainer • ${_formatDate(entry.date)}';
+              return _SheetItem(
+                title: entry.type == _PaymentPillType.project
+                    ? project?.title ?? entry.clientName
+                    : entry.clientName,
+                subtitle: subtitle,
+                trailing: _formatCurrency(entry.amount),
+                onTap: client == null ? null : () => _openClientDetails(client),
+              );
+            },
+          )
+          .toList(),
       emptyLabel: 'No payments this week.',
     );
   }
@@ -3461,15 +3472,41 @@ class _PaymentPillItem {
   final String? projectId;
 }
 
+class _UpcomingPaymentEntry {
+  const _UpcomingPaymentEntry({
+    required this.clientId,
+    required this.clientName,
+    required this.amount,
+    required this.date,
+    required this.createdAt,
+    required this.tagLabel,
+    required this.type,
+    this.projectId,
+    this.sourcePayment,
+  });
+
+  final String clientId;
+  final String clientName;
+  final double amount;
+  final DateTime date;
+  final DateTime createdAt;
+  final String tagLabel;
+  final _PaymentPillType type;
+  final String? projectId;
+  final ProjectPayment? sourcePayment;
+}
+
 class _UpcomingPayment {
   const _UpcomingPayment({
-    required this.client,
+    required this.clientId,
+    required this.clientName,
     required this.amount,
     required this.date,
     required this.kind,
   });
 
-  final String client;
+  final String clientId;
+  final String clientName;
   final double amount;
   final DateTime date;
   final String kind;
@@ -3480,11 +3517,13 @@ class _SheetItem extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.trailing,
+    this.onTap,
   });
 
   final String title;
   final String subtitle;
   final String? trailing;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3492,6 +3531,7 @@ class _SheetItem extends StatelessWidget {
       title: Text(title),
       subtitle: Text(subtitle),
       trailing: trailing == null ? null : Text(trailing!),
+      onTap: onTap,
     );
   }
 }
