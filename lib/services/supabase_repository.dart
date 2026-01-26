@@ -616,6 +616,7 @@ class SupabaseRepository {
       'phone': client.phone,
       'email': client.email,
       'telegram': client.telegram,
+      'notes': client.notes,
       'planned_budget': client.plannedBudget,
       'created_at': client.createdAt.toIso8601String(),
       'updated_at': client.updatedAt.toIso8601String(),
@@ -740,6 +741,7 @@ class SupabaseRepository {
       phone: row['phone'] as String?,
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
+      notes: row['notes'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
       avatarColorHex: normalizeClientColorHex(storedColor),
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
@@ -803,7 +805,7 @@ class SupabaseRepository {
   }
 
   String _clientFallbackColumns() {
-    return 'id,user_id,name,type,contact_person,phone,email,telegram,planned_budget,'
+    return 'id,user_id,name,type,contact_person,phone,email,telegram,notes,planned_budget,'
         'created_at,updated_at,color';
   }
 
