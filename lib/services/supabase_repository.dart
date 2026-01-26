@@ -583,6 +583,7 @@ class SupabaseRepository {
   }
 
   Map<String, dynamic> _clientToRow(Client client, String userId) {
+    final normalizedColor = normalizeClientColorHex(client.avatarColorHex);
     final payload = {
       'id': client.id,
       'user_id': userId,
@@ -597,9 +598,9 @@ class SupabaseRepository {
       'updated_at': client.updatedAt.toIso8601String(),
     };
     if (_supportsAvatarColorColumn) {
-      payload['avatar_color'] = client.avatarColorHex;
+      payload['avatar_color'] = normalizedColor;
       debugPrint(
-        'Client color update (repository payload): client=${client.id} avatar_color=${client.avatarColorHex}',
+        'Client color update (repository payload): client=${client.id} avatar_color=$normalizedColor',
       );
     }
     return payload;
@@ -710,7 +711,9 @@ class SupabaseRepository {
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
-      avatarColorHex: row['avatar_color'] as String? ?? row['color'] as String? ?? '',
+      avatarColorHex: normalizeClientColorHex(
+        row['avatar_color'] as String? ?? row['color'] as String?,
+      ),
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
@@ -801,6 +804,9 @@ class SupabaseRepository {
     required Future<T> Function() action,
     Map<String, dynamic> payload = const {},
   }) async {
+    debugPrint(
+      'Supabase $table $operation request payload_keys=${payload.keys.toList()}',
+    );
     try {
       return await action();
     } on PostgrestException catch (error) {
