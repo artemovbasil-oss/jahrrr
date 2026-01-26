@@ -127,14 +127,23 @@ class SupabaseRepository {
   List<Client> buildClientsWithRetainers({
     required List<Map<String, dynamic>> clientRows,
     required List<Map<String, dynamic>> retainerRows,
+    Map<String, String> existingAvatarColors = const {},
   }) {
     final retainers = <String, Map<String, dynamic>>{
       for (final row in retainerRows) row['client_id'] as String: row,
     };
     return clientRows
-        .map<Client>(
-          (row) => _clientFromRow(row, retainers[row['id'] as String]),
-        )
+        .map<Client>((row) {
+          final clientId = row['id'] as String? ?? '';
+          final storedColor = _readAvatarColor(row);
+          final fallbackColor =
+              storedColor == null ? existingAvatarColors[clientId] : null;
+          return _clientFromRow(
+            row,
+            retainers[clientId],
+            fallbackAvatarColorHex: fallbackColor,
+          );
+        })
         .toList();
   }
 
@@ -687,8 +696,9 @@ class SupabaseRepository {
 
   Client _clientFromRow(
     Map<String, dynamic> row,
-    Map<String, dynamic>? retainerRow,
-  ) {
+    Map<String, dynamic>? retainerRow, {
+    String? fallbackAvatarColorHex,
+  }) {
     final type = row['type'] as String? ?? 'project';
     final retainer = retainerRow == null
         ? null
@@ -702,6 +712,7 @@ class SupabaseRepository {
             updatedAt: DateTime.tryParse(retainerRow['updated_at']?.toString() ?? '')
                 ?? DateTime.now(),
           );
+    final storedColor = _readAvatarColor(row) ?? fallbackAvatarColorHex;
     return Client(
       id: row['id'] as String? ?? '',
       name: row['name'] as String? ?? '',
@@ -711,9 +722,7 @@ class SupabaseRepository {
       email: row['email'] as String?,
       telegram: row['telegram'] as String?,
       plannedBudget: (row['planned_budget'] as num?)?.toDouble(),
-      avatarColorHex: normalizeClientColorHex(
-        row['avatar_color'] as String? ?? row['color'] as String?,
-      ),
+      avatarColorHex: normalizeClientColorHex(storedColor),
       createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
@@ -776,7 +785,16 @@ class SupabaseRepository {
 
   String _clientFallbackColumns() {
     return 'id,user_id,name,type,contact_person,phone,email,telegram,planned_budget,'
-        'created_at,updated_at';
+        'created_at,updated_at,color';
+  }
+
+  String? _readAvatarColor(Map<String, dynamic> row) {
+    final stored = row['avatar_color'] ?? row['color'];
+    if (stored is! String) {
+      return null;
+    }
+    final trimmed = stored.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   bool _isAvatarColorMissing(PostgrestException error) {

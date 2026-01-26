@@ -639,11 +639,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final retainerRows = await retainerRowsFuture;
       final projects = await projectsFuture;
       final payments = await paymentsFuture;
+      final existingAvatarColors = {
+        for (final client in _clients) client.id: client.avatarColorHex,
+      };
       final clients = _repository.buildClientsWithRetainers(
         clientRows: clientRows,
         retainerRows: retainerRows,
+        existingAvatarColors: existingAvatarColors,
       );
       final ensuredClients = _ensureClientAvatarColors(clients);
+      debugPrint(
+        'Client color sync (bootstrap): clients=${ensuredClients.clients.length}',
+      );
       if (ensuredClients.updated) {
         await _repository.syncAll(
           clients: ensuredClients.clients,
@@ -1859,28 +1866,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
           )
         : null;
 
+    final localColor = normalizeClientColorHex(_selectedClientColorHex);
+    final newClient = Client(
+      id: _generateId(),
+      name: _clientNameController.text.trim(),
+      type: contractType,
+      contactPerson: contactName.isEmpty ? null : contactName,
+      phone: contactPhone.isEmpty ? null : contactPhone,
+      email: contactEmail.isEmpty ? null : contactEmail,
+      telegram: contactTelegram.isEmpty ? null : contactTelegram,
+      plannedBudget: contractType == 'project' ? plannedBudget : null,
+      createdAt: now,
+      updatedAt: now,
+      avatarColorHex: localColor,
+      retainerSettings: retainerSettings,
+    );
     setState(() {
-      _clients.add(
-        Client(
-          id: _generateId(),
-          name: _clientNameController.text.trim(),
-          type: contractType,
-          contactPerson: contactName.isEmpty ? null : contactName,
-          phone: contactPhone.isEmpty ? null : contactPhone,
-          email: contactEmail.isEmpty ? null : contactEmail,
-          telegram: contactTelegram.isEmpty ? null : contactTelegram,
-          plannedBudget: contractType == 'project' ? plannedBudget : null,
-          createdAt: now,
-          updatedAt: now,
-          avatarColorHex: normalizeClientColorHex(_selectedClientColorHex),
-          retainerSettings: retainerSettings,
-        ),
+      debugPrint(
+        'Client color create (local): client=${newClient.id} color=$localColor',
       );
+      _clients.add(newClient);
     });
     final saved = await _persistData();
     if (!saved || !mounted) {
       return;
     }
+    final refreshedClient = _clientById(newClient.id);
+    debugPrint(
+      'Client color create (after sync): client=${newClient.id} color=${refreshedClient?.avatarColorHex ?? 'missing'}',
+    );
     _showSnackBar(context, 'Client added');
   }
 
