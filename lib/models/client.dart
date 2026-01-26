@@ -1,5 +1,7 @@
 import 'retainer_settings.dart';
 
+const String _kDefaultAvatarColorHex = '#2D6EF8';
+
 class Client {
   const Client({
     required this.id,
@@ -37,11 +39,14 @@ class Client {
         : 'project';
     final type = json['type'] as String? ?? legacyType;
     final id = json['id'] as String? ?? (json['name'] as String? ?? '');
-    final avatarColorHex = json['avatar_color'] as String? ??
-        json['color'] as String? ??
-        json['avatarColorHex'] as String? ??
-        '';
-    final retainerSettingsJson = json['retainerSettings'] as Map<String, dynamic>?;
+    final avatarColorHex = _normalizeAvatarColorHex(
+      json['avatar_color'] as String? ??
+          json['color'] as String? ??
+          json['avatarColorHex'] as String?,
+    );
+    final retainerSettingsJson =
+        (json['retainer_settings'] as Map<String, dynamic>?) ??
+        (json['retainerSettings'] as Map<String, dynamic>?);
     final parsedRetainer = retainerSettingsJson == null
         ? _buildLegacyRetainerSettings(legacyProject, legacyBudget)
         : RetainerSettings.fromJson(retainerSettingsJson);
@@ -50,15 +55,23 @@ class Client {
       id: id,
       name: json['name'] as String? ?? '',
       type: type,
-      contactPerson: json['contactPerson'] as String?,
+      contactPerson:
+          json['contact_person'] as String? ?? json['contactPerson'] as String?,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
       telegram: json['telegram'] as String?,
-      plannedBudget: (json['plannedBudget'] as num?)?.toDouble() ?? legacyBudget,
-      createdAt:
-          DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
-      updatedAt:
-          DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
+      plannedBudget:
+          (json['planned_budget'] as num?)?.toDouble() ??
+          (json['plannedBudget'] as num?)?.toDouble() ??
+          legacyBudget,
+      createdAt: DateTime.tryParse(
+            json['created_at'] as String? ?? json['createdAt'] as String? ?? '',
+          ) ??
+          DateTime.now(),
+      updatedAt: DateTime.tryParse(
+            json['updated_at'] as String? ?? json['updatedAt'] as String? ?? '',
+          ) ??
+          DateTime.now(),
       avatarColorHex: avatarColorHex,
       retainerSettings: type == 'retainer' ? parsedRetainer : null,
     );
@@ -69,15 +82,15 @@ class Client {
       'id': id,
       'name': name,
       'type': type,
-      'contactPerson': contactPerson,
+      'contact_person': contactPerson,
       'phone': phone,
       'email': email,
       'telegram': telegram,
-      'plannedBudget': plannedBudget,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
-      'avatar_color': avatarColorHex,
-      'retainerSettings': retainerSettings?.toJson(),
+      'planned_budget': plannedBudget,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'avatar_color': _normalizeAvatarColorHex(avatarColorHex),
+      'retainer_settings': retainerSettings?.toJson(),
     };
   }
 }
@@ -97,4 +110,13 @@ RetainerSettings? _buildLegacyRetainerSettings(String? projectSummary, double? b
     isEnabled: true,
     updatedAt: DateTime.now(),
   );
+}
+
+String _normalizeAvatarColorHex(String? value) {
+  final cleaned = value?.replaceAll('#', '').trim() ?? '';
+  if (cleaned.isEmpty) {
+    return _kDefaultAvatarColorHex;
+  }
+  final normalized = cleaned.toUpperCase();
+  return '#$normalized';
 }

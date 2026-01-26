@@ -706,6 +706,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _projects.clear();
       _projectPayments.clear();
     });
+    _syncStatusController.setFailed();
     _showSnackBar(context, 'Failed to sync data.');
   }
 
@@ -801,7 +802,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _syncStatusController.setSynced();
       return true;
     } catch (_) {
-      _showSnackBar(context, 'Failed to save changes.');
+      _syncStatusController.setFailed();
+      _showSnackBar(context, 'Sync failed.');
       return false;
     }
   }
@@ -811,10 +813,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       animation: _syncStatusController,
       builder: (context, _) {
         final isLoading = _syncStatusController.isLoading;
+        final isFailed = _syncStatusController.isFailed;
         final theme = Theme.of(context);
         final isDark = theme.brightness == Brightness.dark;
-        final label = isLoading ? 'Loading data…' : 'Data is up to date';
-        final color = isLoading ? const Color(0xFFFFC107) : const Color(0xFF2E7D32);
+        final label = isLoading
+            ? 'Syncing…'
+            : isFailed
+                ? 'Sync failed'
+                : 'Up to date';
+        final color = isLoading
+            ? const Color(0xFFFFC107)
+            : isFailed
+                ? const Color(0xFFD32F2F)
+                : const Color(0xFF2E7D32);
         final textColor = theme.colorScheme.onSurfaceVariant
             .withOpacity(isDark ? 0.82 : 0.72);
         return Row(
@@ -2590,13 +2601,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _updateClient(Client updatedClient) async {
+    final previousIndex =
+        _clients.indexWhere((client) => client.id == updatedClient.id);
+    final previousClient =
+        previousIndex == -1 ? null : _clients[previousIndex];
     setState(() {
-      final index = _clients.indexWhere((client) => client.id == updatedClient.id);
-      if (index != -1) {
-        _clients[index] = updatedClient;
+      if (previousIndex != -1) {
+        _clients[previousIndex] = updatedClient;
       }
     });
-    await _persistData();
+    final saved = await _persistData();
+    if (!saved && previousClient != null && mounted) {
+      setState(() {
+        final rollbackIndex =
+            _clients.indexWhere((client) => client.id == updatedClient.id);
+        if (rollbackIndex != -1) {
+          _clients[rollbackIndex] = previousClient;
+        }
+      });
+    }
     final refreshedClient = _clientById(updatedClient.id);
     final refreshedColor = refreshedClient?.avatarColorHex ?? 'missing';
     debugPrint(
