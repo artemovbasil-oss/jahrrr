@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_snack.dart';
+
 enum OperationKind { create, update, delete }
 
 class OperationFeedback {
@@ -8,45 +10,19 @@ class OperationFeedback {
   final BuildContext context;
 
   void showProgress(OperationKind kind) {
-    _showSnackBar(
-      _progressLabel(kind),
-      duration: const Duration(minutes: 5),
-    );
+    AppSnack.showLoading(context, _progressLabel(kind));
   }
 
   void showSuccess(OperationKind kind) {
-    _showSnackBar(
-      _successLabel(kind),
-      duration: const Duration(seconds: 2),
-    );
+    AppSnack.showSuccess(context, _successLabel(kind));
   }
 
   void showFailure(OperationKind kind, {VoidCallback? onRetry}) {
-    _showSnackBar(
+    AppSnack.showError(
+      context,
       _failureLabel(kind),
-      duration: const Duration(seconds: 4),
-      action: onRetry == null
-          ? null
-          : SnackBarAction(
-              label: 'Retry',
-              onPressed: onRetry,
-            ),
-    );
-  }
-
-  void _showSnackBar(
-    String message, {
-    required Duration duration,
-    SnackBarAction? action,
-  }) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: duration,
-        action: action,
-      ),
+      actionLabel: onRetry == null ? null : 'Retry',
+      onAction: onRetry,
     );
   }
 
