@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app.dart';
 import '../models/user_profile.dart';
 import '../services/supabase_repository.dart';
+import '../utils/app_snack.dart';
 import '../widgets/user_avatar.dart';
 
 enum ProfileResult {
@@ -63,15 +64,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _savingProfile = true;
     });
+    AppSnack.showLoading(context, 'Saving…');
     try {
       await widget.repository.updateProfileName(_nameController.text.trim());
       if (!mounted) {
         return;
       }
-      _showSnackBar('Profile updated.');
+      AppSnack.showSuccess(context, 'Saved.');
       Navigator.of(context).pop(ProfileResult.updated);
     } on AuthException catch (error) {
-      _showSnackBar(error.message);
+      AppSnack.showError(context, error.message);
     } finally {
       if (mounted) {
         setState(() {
@@ -95,11 +97,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await file.writeAsString(prettyJson);
       await Share.shareXFiles([XFile(file.path)], text: 'Jahrrr CRM backup');
       if (mounted) {
-        _showSnackBar('Backup exported.');
+        AppSnack.showSuccess(context, 'Backup exported.');
       }
     } catch (_) {
       if (mounted) {
-        _showSnackBar('Export failed.');
+        AppSnack.showError(context, 'Export failed.');
       }
     } finally {
       if (mounted) {
@@ -131,11 +133,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) {
         return;
       }
-      _showSnackBar('Data imported.');
+      AppSnack.showSuccess(context, 'Data imported.');
       Navigator.of(context).pop(ProfileResult.dataImported);
     } catch (_) {
       if (mounted) {
-        _showSnackBar('Import failed. Check the JSON format.');
+        AppSnack.showError(context, 'Import failed. Check the JSON format.');
       }
     } finally {
       if (mounted) {
@@ -179,12 +181,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     Navigator.of(context).pop(ProfileResult.loggedOut);
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
   }
 
   @override

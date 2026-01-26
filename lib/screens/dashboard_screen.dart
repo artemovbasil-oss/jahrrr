@@ -12,6 +12,7 @@ import '../models/user_profile.dart';
 import '../services/supabase_repository.dart';
 import '../utils/client_color.dart';
 import '../utils/color_contrast.dart';
+import '../utils/app_snack.dart';
 import '../utils/operation_feedback.dart';
 import '../widgets/client_color_picker.dart';
 import '../widgets/milestone_project_card.dart';
@@ -98,6 +99,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final ScrollController _scrollController;
   bool _showMascot = false;
   bool _isLoading = true;
+  bool _isRefreshing = false;
   bool _isSearching = false;
   String _searchQuery = '';
   _BootstrapFailure? _bootstrapFailure;
@@ -353,146 +355,150 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(20),
-        children: [
-          if (_bootstrapFailure != null) ...[
-            _buildBootstrapErrorBanner(),
-            const SizedBox(height: 16),
-          ],
-          GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 0.95,
-            children: _isLoading
-                ? List.generate(4, (_) => _buildSkeletonStatCard(context))
-                : [
-                    StatCard(
-                      title: 'Active projects',
-                      value: activeProjectsCount.toString(),
-                      tag: '$activeProjectClientsCount active clients',
-                      accentColor: const Color(0xFF0369A1),
-                      gradient: const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
-                      onTap: () => _showActiveProjectsSheet(activeProjects),
-                    ),
-                    StatCard(
-                      title: 'Budget in progress',
-                      value: _formatCurrency(budgetInProgress),
-                      tag: '$activeProjectsCount projects',
-                      accentColor: const Color(0xFF00A63E),
-                      gradient: const [Color(0xFFF0F5E0), Color(0xFF96CA49)],
-                      onTap: () => _showBudgetBreakdownSheet(
-                        today,
-                        range30End,
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(20),
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            if (_bootstrapFailure != null) ...[
+              _buildBootstrapErrorBanner(),
+              const SizedBox(height: 16),
+            ],
+            GridView.count(
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 0.95,
+              children: _isLoading
+                  ? List.generate(4, (_) => _buildSkeletonStatCard(context))
+                  : [
+                      StatCard(
+                        title: 'Active projects',
+                        value: activeProjectsCount.toString(),
+                        tag: '$activeProjectClientsCount active clients',
+                        accentColor: const Color(0xFF0369A1),
+                        gradient: const [Color(0xFFE0F2FE), Color(0xFFBAE6FD)],
+                        onTap: () => _showActiveProjectsSheet(activeProjects),
                       ),
-                    ),
-                    StatCard(
-                      title: 'Deadlines',
-                      value: deadlinesThisWeek.toString(),
-                      tag: 'This week',
-                      accentColor: const Color(0xFFCA8A04),
-                      gradient: const [Color(0xFFFEF3C7), Color(0xFFFDE047)],
-                      onTap: () => _showDeadlinesSheet(
-                        _deadlineProjects(today, range7End),
+                      StatCard(
+                        title: 'Budget in progress',
+                        value: _formatCurrency(budgetInProgress),
+                        tag: '$activeProjectsCount projects',
+                        accentColor: const Color(0xFF00A63E),
+                        gradient: const [Color(0xFFF0F5E0), Color(0xFF96CA49)],
+                        onTap: () => _showBudgetBreakdownSheet(
+                          today,
+                          range30End,
+                        ),
                       ),
-                    ),
-                    StatCard(
-                      title: 'Upcoming payments',
-                      value: _formatCurrency(upcomingPayments),
-                      tag: 'This week',
-                      accentColor: const Color(0xFF0F0E0E),
-                      gradient: const [Colors.white, Color(0xFFC0C0C0)],
-                      onTap: () =>
-                          _showUpcomingPaymentsSheet(today, upcomingWindowEnd),
-                    ),
-                  ],
-          ),
-          const SizedBox(height: 28),
-          SectionHeader(
-            title: 'Milestones & deadlines',
-            actionLabel: showMilestonesViewAll ? 'View all' : null,
-            onActionPressed: showMilestonesViewAll
-                ? () => _openMilestonesDeadlines(milestoneProjects)
-                : null,
-          ),
-          const SizedBox(height: 12),
-          ...(_isLoading ? _buildLoadingMilestones() : milestoneWidgets),
-          const SizedBox(height: 24),
-          SectionHeader(
-            title: 'Upcoming payments',
-            actionLabel: 'Add',
-            onActionPressed: () {
-              final hasProjects = _projects.any(
-                (project) => _clientById(project.clientId) != null,
-              );
-              if (!hasProjects) {
-                _showSnackBar(context, 'Create a project first');
-                return;
-              }
-              _showPaymentForm();
-            },
-          ),
-          const SizedBox(height: 12),
-          ...paymentWidgets,
-          const SizedBox(height: 24),
-          SectionHeader(
-            title: 'Clients',
-            actionLabel: 'Add',
-            onActionPressed: _showClientForm,
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('All'),
-                  selected: _selectedClientStatus == null,
-                  onSelected: (_) => _updateClientStatusFilter(null),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  selectedColor: selectedChipColor,
-                  checkmarkColor: selectedChipLabelColor,
-                  labelStyle: TextStyle(
-                    color: _selectedClientStatus == null
-                        ? selectedChipLabelColor
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ...clientStatuses.map(
-                  (status) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(status.value),
-                      selected: _selectedClientStatus == status.key,
-                      onSelected: (_) => _updateClientStatusFilter(status.key),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-                      selectedColor: selectedChipColor,
-                      checkmarkColor: selectedChipLabelColor,
-                      labelStyle: TextStyle(
-                        color: _selectedClientStatus == status.key
-                            ? selectedChipLabelColor
-                            : theme.colorScheme.onSurfaceVariant,
+                      StatCard(
+                        title: 'Deadlines',
+                        value: deadlinesThisWeek.toString(),
+                        tag: 'This week',
+                        accentColor: const Color(0xFFCA8A04),
+                        gradient: const [Color(0xFFFEF3C7), Color(0xFFFDE047)],
+                        onTap: () => _showDeadlinesSheet(
+                          _deadlineProjects(today, range7End),
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-              ],
+                      StatCard(
+                        title: 'Upcoming payments',
+                        value: _formatCurrency(upcomingPayments),
+                        tag: 'This week',
+                        accentColor: const Color(0xFF0F0E0E),
+                        gradient: const [Colors.white, Color(0xFFC0C0C0)],
+                        onTap: () =>
+                            _showUpcomingPaymentsSheet(today, upcomingWindowEnd),
+                      ),
+                    ],
             ),
-          ),
-          const SizedBox(height: 12),
-          ...clientWidgets,
-          const SizedBox(height: 12),
-          _buildMascotReveal(),
-        ],
+            const SizedBox(height: 28),
+            SectionHeader(
+              title: 'Milestones & deadlines',
+              actionLabel: showMilestonesViewAll ? 'View all' : null,
+              onActionPressed: showMilestonesViewAll
+                  ? () => _openMilestonesDeadlines(milestoneProjects)
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            ...(_isLoading ? _buildLoadingMilestones() : milestoneWidgets),
+            const SizedBox(height: 24),
+            SectionHeader(
+              title: 'Upcoming payments',
+              actionLabel: 'Add',
+              onActionPressed: () {
+                final hasProjects = _projects.any(
+                  (project) => _clientById(project.clientId) != null,
+                );
+                if (!hasProjects) {
+                  AppSnack.showInfo(context, 'Create a project first.');
+                  return;
+                }
+                _showPaymentForm();
+              },
+            ),
+            const SizedBox(height: 12),
+            ...paymentWidgets,
+            const SizedBox(height: 24),
+            SectionHeader(
+              title: 'Clients',
+              actionLabel: 'Add',
+              onActionPressed: _showClientForm,
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('All'),
+                    selected: _selectedClientStatus == null,
+                    onSelected: (_) => _updateClientStatusFilter(null),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    selectedColor: selectedChipColor,
+                    checkmarkColor: selectedChipLabelColor,
+                    labelStyle: TextStyle(
+                      color: _selectedClientStatus == null
+                          ? selectedChipLabelColor
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ...clientStatuses.map(
+                    (status) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(status.value),
+                        selected: _selectedClientStatus == status.key,
+                        onSelected: (_) => _updateClientStatusFilter(status.key),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                        selectedColor: selectedChipColor,
+                        checkmarkColor: selectedChipLabelColor,
+                        labelStyle: TextStyle(
+                          color: _selectedClientStatus == status.key
+                              ? selectedChipLabelColor
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...clientWidgets,
+            const SizedBox(height: 12),
+            _buildMascotReveal(),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.small(
         tooltip: 'Just +',
@@ -502,10 +508,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  Future<void> _handleRefresh() async {
+    if (_isRefreshing || _isLoading) {
+      return;
+    }
+    setState(() {
+      _isRefreshing = true;
+    });
+    await _bootstrapData();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isRefreshing = false;
+    });
   }
 
   void _showQuickAddSheet() {
@@ -762,7 +778,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _projectPayments.clear();
     });
     _syncStatusController.setFailed();
-    _showSnackBar(context, 'Failed to sync data.');
+    AppSnack.showError(
+      context,
+      'Sync failed. Pull to refresh to retry.',
+    );
   }
 
   void _logBootstrapFailure(_BootstrapFailure failure) {
@@ -1395,15 +1414,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             maxLines: 4,
                             textInputAction: TextInputAction.newline,
                           ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _clientNotesController,
-                            decoration: const InputDecoration(
-                              labelText: 'Notes',
-                            ),
-                            maxLines: 4,
-                            textInputAction: TextInputAction.newline,
-                          ),
                         ],
                       ),
                     ),
@@ -1662,6 +1672,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             textInputAction: TextInputAction.done,
                           ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _clientNotesController,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes',
+                            ),
+                            maxLines: 4,
+                            textInputAction: TextInputAction.newline,
+                          ),
                         ],
                       ),
                     ),
@@ -1828,7 +1847,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) {
       return;
     }
-    _showSnackBar(context, 'Client duplicated');
+    AppSnack.showSuccess(context, 'Client duplicated.');
   }
 
   Future<Client> _duplicateClientWithName(
@@ -1982,11 +2001,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _openProjectFormFromMenu() {
     if (_clients.isEmpty) {
-      _showSnackBar(context, 'Create a client first');
+      AppSnack.showInfo(context, 'Create a client first.');
       return;
     }
     if (_projectEligibleClients().isEmpty) {
-      _showSnackBar(context, 'Create a project client first');
+      AppSnack.showInfo(context, 'Create a project client first.');
       return;
     }
     _showProjectForm();
@@ -1997,7 +2016,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       (project) => _clientById(project.clientId) != null,
     );
     if (!hasProjects) {
-      _showSnackBar(context, 'Create a project first');
+      AppSnack.showInfo(context, 'Create a project first.');
       return;
     }
     _showPaymentForm();
@@ -2006,7 +2025,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showProjectForm() {
     final eligibleClients = _projectEligibleClients();
     if (eligibleClients.isEmpty) {
-      _showSnackBar(context, 'Create a project client first');
+      AppSnack.showInfo(context, 'Create a project client first.');
       return;
     }
     _projectNameController.clear();
@@ -2429,7 +2448,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _addPayment() async {
     final projectId = _selectedPaymentProjectId;
     if (projectId == null) {
-      _showSnackBar(context, 'Select a project');
+      AppSnack.showInfo(context, 'Select a project.');
       return;
     }
     final amount =
@@ -2469,21 +2488,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _addProject() async {
     final clientId = _selectedProjectClient;
     if (clientId == null) {
-      _showSnackBar(context, 'Select a client');
+      AppSnack.showInfo(context, 'Select a client.');
       return;
     }
     if (!_isValidUuid(clientId)) {
-      _showSnackBar(context, 'Selected client ID is invalid.');
+      AppSnack.showError(context, 'Selected client ID is invalid.');
       return;
     }
     final client = _clients.firstWhere((item) => item.id == clientId);
     if (_isRetainerClient(client)) {
-      _showSnackBar(context, 'Retainer clients cannot have projects');
+      AppSnack.showError(context, 'Retainer clients cannot have projects.');
       return;
     }
     final stage = _selectedProjectStage ?? 'first_meeting';
     if (!isValidProjectStage(stage)) {
-      _showSnackBar(context, 'Select a valid project stage');
+      AppSnack.showInfo(context, 'Select a valid project stage.');
       return;
     }
     final deadline = _selectedProjectDeadline;
@@ -2492,12 +2511,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ) ??
         0;
     if (amount <= 0) {
-      _showSnackBar(context, 'Enter a valid project amount');
+      AppSnack.showInfo(context, 'Enter a valid project amount.');
       return;
     }
     final title = _projectNameController.text.trim();
     if (title.isEmpty) {
-      _showSnackBar(context, 'Enter a project name');
+      AppSnack.showInfo(context, 'Enter a project name.');
       return;
     }
     final now = DateTime.now();
@@ -3186,7 +3205,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     final clientId = await _repository.fetchFirstEligibleClientId();
     if (clientId == null) {
-      _showSnackBar(context, 'No eligible clients available for debug insert.');
+      AppSnack.showInfo(
+        context,
+        'No eligible clients available for debug insert.',
+      );
       return;
     }
     final now = DateTime.now();
@@ -3209,12 +3231,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _projects.add(saved);
       });
-      _showSnackBar(context, 'Debug project inserted.');
+      AppSnack.showSuccess(context, 'Debug project inserted.');
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showSnackBar(context, _formatInsertError('debug project', error));
+      AppSnack.showError(context, _formatInsertError('debug project', error));
     }
   }
 

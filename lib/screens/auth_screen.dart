@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/app_config.dart';
+import '../utils/app_snack.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -23,15 +25,18 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
+  final FocusNode _otpFocusNode = FocusNode();
   bool _isSending = false;
   bool _isVerifying = false;
   bool _otpSent = false;
+  String? _lastSubmittedOtp;
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
     _otpController.dispose();
+    _otpFocusNode.dispose();
     super.dispose();
   }
 
@@ -41,12 +46,12 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     final configError = AppConfig.supabaseConfigError;
     if (configError != null) {
-      _showMessage(configError);
+      _showError(configError);
       return;
     }
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
-      _showMessage('Invalid email format.');
+      _showError('Invalid email format.');
       return;
     }
     setState(() {
@@ -64,12 +69,13 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() {
           _otpSent = true;
         });
+        _focusOtpField();
       }
-      _showMessage('OTP sent to your email.');
+      AppSnack.showSuccess(context, 'OTP sent to your email.');
     } on AuthException catch (error) {
-      _showMessage(error.message);
+      _showError(error.message);
     } catch (error) {
-      _showMessage(_friendlyNetworkMessage(error));
+      _showError(_friendlyNetworkMessage(error));
     } finally {
       if (mounted) {
         setState(() {
@@ -80,22 +86,27 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _verifyOtp() async {
-    if (_otpController.text.trim().length != 6) {
-      _showMessage('Enter the 6-digit code.');
+    if (_isVerifying) {
+      return;
+    }
+    final code = _otpController.text.trim();
+    if (code.length != 6) {
+      _showError('Enter the 6-digit code.');
       return;
     }
     final configError = AppConfig.supabaseConfigError;
     if (configError != null) {
-      _showMessage(configError);
+      _showError(configError);
       return;
     }
     setState(() {
       _isVerifying = true;
     });
+    _lastSubmittedOtp = code;
     try {
       final response = await Supabase.instance.client.auth.verifyOTP(
         email: _emailController.text.trim(),
-        token: _otpController.text.trim(),
+        token: code,
         type: OtpType.email,
       );
       final name = _nameController.text.trim();
@@ -106,9 +117,11 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       widget.onAuthenticated();
     } on AuthException catch (error) {
-      _showMessage(error.message);
+      _showError(error.message);
+      _lastSubmittedOtp = null;
     } catch (error) {
-      _showMessage(_friendlyNetworkMessage(error));
+      _showError(_friendlyNetworkMessage(error));
+      _lastSubmittedOtp = null;
     } finally {
       if (mounted) {
         setState(() {
@@ -118,19 +131,17 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _showMessage(String message) {
+  void _showError(String message) {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    AppSnack.showError(context, message);
   }
 
   Future<bool> _probeSupabaseSettings() async {
     final baseUrl = AppConfig.supabaseUrlResolved;
     if (baseUrl.isEmpty) {
-      _showMessage('SUPABASE_URL is missing.');
+      _showError('SUPABASE_URL is missing.');
       return false;
     }
     final settingsUri = Uri.parse('$baseUrl/auth/v1/settings');
@@ -143,7 +154,7 @@ class _AuthScreenState extends State<AuthScreen> {
       final body = await response.transform(utf8.decoder).join();
       debugPrint('Supabase settings response: ${response.statusCode} $body');
       if (response.statusCode >= 400) {
-        _showMessage(
+        _showError(
           'Supabase settings check failed (${response.statusCode}). Check SUPABASE_URL.',
         );
         return false;
@@ -151,7 +162,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return true;
     } catch (error) {
       debugPrint('Supabase settings probe failed: $error');
-      _showMessage(_friendlyNetworkMessage(error));
+      _showError(_friendlyNetworkMessage(error));
       return false;
     } finally {
       client.close(force: true);
@@ -165,6 +176,28 @@ class _AuthScreenState extends State<AuthScreen> {
       return 'Unable to reach Supabase. Check your network or SUPABASE_URL.';
     }
     return 'Something went wrong. Please try again.';
+  }
+
+  void _focusOtpField() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_otpSent) {
+        return;
+      }
+      _otpFocusNode.requestFocus();
+    });
+  }
+
+  void _handleOtpChanged(String value) {
+    if (_isVerifying) {
+      return;
+    }
+    if (value.length < 6) {
+      _lastSubmittedOtp = null;
+      return;
+    }
+    if (value.length == 6 && value != _lastSubmittedOtp) {
+      _verifyOtp();
+    }
   }
 
   @override
@@ -227,11 +260,31 @@ class _AuthScreenState extends State<AuthScreen> {
                         if (_otpSent)
                           TextFormField(
                             controller: _otpController,
-                            decoration: const InputDecoration(
+                            focusNode: _otpFocusNode,
+                            autofocus: _otpSent,
+                            decoration: InputDecoration(
                               labelText: '6-digit code',
+                              suffixIcon: _isVerifying
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
                             ),
                             keyboardType: TextInputType.number,
+                            enabled: !_isVerifying,
                             textInputAction: TextInputAction.done,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(6),
+                            ],
+                            onChanged: _handleOtpChanged,
                           ),
                         const SizedBox(height: 24),
                         SizedBox(
