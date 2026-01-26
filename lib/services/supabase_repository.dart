@@ -300,7 +300,7 @@ class SupabaseRepository {
 
     final clientPayload = _supportsAvatarColorColumn
         ? clients
-        : _stripAvatarColorFromRows(clients);
+        : SupabaseRepository.stripAvatarColorFromRows(clients);
     if (clientPayload.isNotEmpty) {
       try {
         await _runSupabase(
@@ -314,7 +314,7 @@ class SupabaseRepository {
       } on PostgrestException catch (error) {
         if (_supportsAvatarColorColumn && _isAvatarColorMissing(error)) {
           _supportsAvatarColorColumn = false;
-          final fallbackClients = _stripAvatarColorFromRows(clients);
+          final fallbackClients = SupabaseRepository.stripAvatarColorFromRows(clients);
           if (fallbackClients.isNotEmpty) {
             await _runSupabase(
               table: 'clients',
@@ -587,6 +587,7 @@ class SupabaseRepository {
         ...row,
         'user_id': userId,
         'avatar_color': normalizedColor,
+        'color': normalizedColor,
       };
     }).toList();
   }
@@ -610,6 +611,11 @@ class SupabaseRepository {
       payload['avatar_color'] = normalizedColor;
       debugPrint(
         'Client color update (repository payload): client=${client.id} avatar_color=$normalizedColor',
+      );
+    } else {
+      payload['color'] = normalizedColor;
+      debugPrint(
+        'Client color update (repository payload): client=${client.id} color=$normalizedColor',
       );
     }
     return payload;
@@ -803,17 +809,29 @@ class SupabaseRepository {
             error.message.toLowerCase().contains('color'));
   }
 
-  List<Map<String, dynamic>> _stripAvatarColorFromRows(
+  @visibleForTesting
+  static List<Map<String, dynamic>> stripAvatarColorFromRows(
     List<Map<String, dynamic>> rows,
   ) {
-    return rows
-        .map(
-          (row) => {
-            for (final entry in row.entries)
-              if (entry.key != 'avatar_color') entry.key: entry.value,
-          },
-        )
-        .toList();
+    return rows.map((row) {
+      final avatarColor = row['avatar_color'];
+      final existingColor = row['color'];
+      final normalizedAvatarColor = avatarColor is String
+          ? normalizeClientColorHex(avatarColor)
+          : null;
+      final shouldCopyAvatarColor =
+          (existingColor == null || (existingColor is String && existingColor.trim().isEmpty)) &&
+              normalizedAvatarColor != null &&
+              normalizedAvatarColor.trim().isNotEmpty;
+      final filtered = <String, dynamic>{
+        for (final entry in row.entries)
+          if (entry.key != 'avatar_color') entry.key: entry.value,
+      };
+      if (shouldCopyAvatarColor) {
+        filtered['color'] = normalizedAvatarColor;
+      }
+      return filtered;
+    }).toList();
   }
 
   Future<T> _runSupabase<T>({
