@@ -11,6 +11,8 @@ import '../models/retainer_settings.dart';
 import '../models/user_profile.dart';
 import '../services/supabase_repository.dart';
 import '../utils/client_color.dart';
+import '../utils/color_contrast.dart';
+import '../utils/operation_feedback.dart';
 import '../widgets/client_color_picker.dart';
 import '../widgets/milestone_project_card.dart';
 import '../widgets/section_header.dart';
@@ -140,6 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final now = DateTime.now();
     final today = _normalizeDate(now);
     final range7End = today.add(const Duration(days: 6));
@@ -201,6 +204,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final upcomingPaymentItems = _isLoading
         ? const <_PaymentPillItem>[]
         : _buildUpcomingPayments(today, range7End);
+    final selectedChipColor = theme.colorScheme.primaryContainer;
+    final selectedChipLabelColor = contrastColorFor(selectedChipColor);
     final filteredPayments = normalizedQuery.isEmpty
         ? upcomingPaymentItems
         : upcomingPaymentItems
@@ -446,6 +451,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
                   labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  selectedColor: selectedChipColor,
+                  checkmarkColor: selectedChipLabelColor,
+                  labelStyle: TextStyle(
+                    color: _selectedClientStatus == null
+                        ? selectedChipLabelColor
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 ...clientStatuses.map(
@@ -458,6 +470,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                       labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      selectedColor: selectedChipColor,
+                      checkmarkColor: selectedChipLabelColor,
+                      labelStyle: TextStyle(
+                        color: _selectedClientStatus == status.key
+                            ? selectedChipLabelColor
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
@@ -660,9 +679,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'Client color loaded (bootstrap): client=${nonDefaultClient.id} '
           'avatar_color=${nonDefaultClient.avatarColorHex}',
         );
+        debugPrint(
+          'Client color regression check (bootstrap): client=${nonDefaultClient.id} '
+          'avatar_color=${nonDefaultClient.avatarColorHex}',
+        );
       } else {
         debugPrint(
           'Client color loaded (bootstrap): no non-default avatar colors found.',
+        );
+        debugPrint(
+          'Client color regression check (bootstrap): no non-default avatar colors found.',
         );
       }
       debugPrint(
@@ -827,7 +853,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return true;
     } catch (_) {
       _syncStatusController.setFailed();
-      _showSnackBar(context, 'Sync failed.');
       return false;
     }
   }
@@ -1707,10 +1732,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       retainerSettings: retainerSettings,
     );
     await _updateClient(updatedClient);
-    if (!mounted) {
-      return;
-    }
-    _showSnackBar(context, 'Client updated');
   }
 
   Future<void> _duplicateClient(Client client) async {
@@ -1884,6 +1905,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : null;
 
     final localColor = normalizeClientColorHex(_selectedClientColorHex);
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.create);
     final newClient = Client(
       id: _generateId(),
       name: _clientNameController.text.trim(),
@@ -1905,14 +1928,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _clients.add(newClient);
     });
     final saved = await _persistData();
-    if (!saved || !mounted) {
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.create);
       return;
     }
     final refreshedClient = _clientById(newClient.id);
     debugPrint(
       'Client color create (after sync): client=${newClient.id} color=${refreshedClient?.avatarColorHex ?? 'missing'}',
     );
-    _showSnackBar(context, 'Client added');
+    feedback.showSuccess(OperationKind.create);
   }
 
   bool _isRetainerClient(Client client) {
@@ -2380,6 +2407,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final kind = _selectedPaymentKind ?? 'other';
     final status = _selectedPaymentStatus ?? 'planned';
     final now = DateTime.now();
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.create);
 
     setState(() {
       _projectPayments.add(
@@ -2397,10 +2426,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     });
     final saved = await _persistData();
-    if (!saved || !mounted) {
+    if (!mounted) {
       return;
     }
-    _showSnackBar(context, 'Payment added');
+    if (!saved) {
+      feedback.showFailure(OperationKind.create);
+      return;
+    }
+    feedback.showSuccess(OperationKind.create);
   }
 
   Future<void> _addProject() async {
@@ -2448,6 +2481,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       createdAt: now,
       updatedAt: now,
     );
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.create);
     try {
       _syncStatusController.setLoading();
       final saved = await _repository.createProject(newProject);
@@ -2462,16 +2497,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
       _syncStatusController.setSynced();
-      _showSnackBar(context, 'Project added');
+      feedback.showSuccess(OperationKind.create);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showSnackBar(context, _formatInsertError('project', error));
+      debugPrint('Project create failed: $error');
+      feedback.showFailure(OperationKind.create);
     }
   }
 
   Future<void> _addProjectFromDetails(Project project) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.create);
     try {
       _syncStatusController.setLoading();
       final saved = await _repository.createProject(project);
@@ -2486,51 +2524,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
       _syncStatusController.setSynced();
-      _showSnackBar(context, 'Project added');
+      feedback.showSuccess(OperationKind.create);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showSnackBar(context, _formatInsertError('project', error));
+      debugPrint('Project create failed: $error');
+      feedback.showFailure(OperationKind.create);
     }
   }
 
   Future<void> _deleteProject(Project project) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.delete);
     setState(() {
       _projects.remove(project);
       _projectPayments.removeWhere((payment) => payment.projectId == project.id);
     });
-    await _persistData();
+    final saved = await _persistData();
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.delete);
+      return;
+    }
+    feedback.showSuccess(OperationKind.delete);
   }
 
   Future<void> _updateProject(Project oldProject, Project updatedProject) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.update);
     setState(() {
       final index = _projects.indexOf(oldProject);
       if (index != -1) {
         _projects[index] = updatedProject;
       }
     });
-    await _persistData();
+    final saved = await _persistData();
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.update);
+      return;
+    }
+    feedback.showSuccess(OperationKind.update);
   }
 
   Future<void> _updateProjectPayment(
     ProjectPayment oldPayment,
     ProjectPayment updatedPayment,
   ) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.update);
     setState(() {
       final index = _projectPayments.indexOf(oldPayment);
       if (index != -1) {
         _projectPayments[index] = updatedPayment;
       }
     });
-    await _persistData();
+    final saved = await _persistData();
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.update);
+      return;
+    }
+    feedback.showSuccess(OperationKind.update);
   }
 
   Future<void> _deleteProjectPayment(ProjectPayment payment) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.delete);
     setState(() {
       _projectPayments.remove(payment);
     });
-    await _persistData();
+    final saved = await _persistData();
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.delete);
+      return;
+    }
+    feedback.showSuccess(OperationKind.delete);
   }
 
   Future<Project> _duplicateProject(
@@ -2579,6 +2658,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _deleteClient(Client client) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.delete);
     setState(() {
       _clients.remove(client);
       final projectIds = _projects
@@ -2589,7 +2670,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _projectPayments
           .removeWhere((payment) => projectIds.contains(payment.projectId));
     });
-    await _persistData();
+    final saved = await _persistData();
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.delete);
+      return;
+    }
+    feedback.showSuccess(OperationKind.delete);
   }
 
   Future<void> _openClientDetails(
@@ -2632,6 +2721,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _updateClient(Client updatedClient) async {
+    final feedback = OperationFeedback(context);
+    feedback.showProgress(OperationKind.update);
     final previousIndex =
         _clients.indexWhere((client) => client.id == updatedClient.id);
     final previousClient =
@@ -2651,11 +2742,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       });
     }
+    if (!mounted) {
+      return;
+    }
+    if (!saved) {
+      feedback.showFailure(OperationKind.update);
+      return;
+    }
     final refreshedClient = _clientById(updatedClient.id);
     final refreshedColor = refreshedClient?.avatarColorHex ?? 'missing';
     debugPrint(
       'Client color update (after): client=${updatedClient.id} color=$refreshedColor',
     );
+    feedback.showSuccess(OperationKind.update);
   }
 
   String _clientTypeLabel(Client client) {
@@ -3426,6 +3525,7 @@ class _PaymentPill extends StatelessWidget {
     final icon = item.type == _PaymentPillType.project
         ? Icons.payments_outlined
         : Icons.calendar_today_outlined;
+    final iconColor = contrastColorFor(avatarColor);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3451,7 +3551,7 @@ class _PaymentPill extends StatelessWidget {
                   backgroundColor: avatarColor,
                   child: Icon(
                     icon,
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: iconColor,
                   ),
                 ),
                 const SizedBox(width: 12),

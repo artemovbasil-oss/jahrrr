@@ -138,6 +138,19 @@ class SupabaseRepository {
           final storedColor = _readAvatarColor(row);
           final fallbackColor =
               storedColor == null ? existingAvatarColors[clientId] : null;
+          if (storedColor != null) {
+            final normalized = normalizeClientColorHex(storedColor);
+            debugPrint(
+              'Client color loaded (bootstrap remote): client=$clientId '
+              'avatar_color=$normalized',
+            );
+          } else if (fallbackColor != null) {
+            final normalized = normalizeClientColorHex(fallbackColor);
+            debugPrint(
+              'Client color loaded (bootstrap local): client=$clientId '
+              'avatar_color=$normalized',
+            );
+          }
           return _clientFromRow(
             row,
             retainers[clientId],
