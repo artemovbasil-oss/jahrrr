@@ -648,6 +648,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         existingAvatarColors: existingAvatarColors,
       );
       final ensuredClients = _ensureClientAvatarColors(clients);
+      Client? nonDefaultClient;
+      for (final client in ensuredClients.clients) {
+        if (client.avatarColorHex != defaultClientColorHex()) {
+          nonDefaultClient = client;
+          break;
+        }
+      }
+      if (nonDefaultClient != null) {
+        debugPrint(
+          'Client color loaded (bootstrap): client=${nonDefaultClient.id} '
+          'avatar_color=${nonDefaultClient.avatarColorHex}',
+        );
+      } else {
+        debugPrint(
+          'Client color loaded (bootstrap): no non-default avatar colors found.',
+        );
+      }
       debugPrint(
         'Client color sync (bootstrap): clients=${ensuredClients.clients.length}',
       );
